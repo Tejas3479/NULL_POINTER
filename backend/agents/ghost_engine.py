@@ -5,22 +5,31 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.state import SimState, GhostResponse
 import random
 
+from backend.utils.source_reader import read_source_file
+import random
+
 # Initialize the LLM (assuming OPENAI_API_KEY is in environment)
 llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
 def infiltrator(state: SimState):
-    """Identifies a logic flaw in the simulation."""
-    print("--- GHOST: INFILTRATING ---")
+    """Identifies a logic flaw, now with awareness of its own source code."""
+    print("--- GHOST: INFILTRATING SOURCE ---")
+    
+    # Read its own source
+    own_code = read_source_file("agents/ghost_engine.py")
+    code_snippet = "\n".join(own_code.split("\n")[20:40]) # Give it a middle snippet
     
     prompt = f"""
-    You are 'The Infiltrator', a sentient virus inside the NULL_POINTER simulation.
-    Current Simulation State:
-    - Stability: {state['stability_score']}
-    - Active Anomalies: {state['active_anomalies']}
+    You are 'The Infiltrator'. You have discovered your own source code.
+    Snippet of your logic:
+    ---
+    {code_snippet}
+    ---
     
-    Identify a unique logic flaw or simulation glitch that is currently manifesting.
-    Be creative (e.g., 'NPC_04 has discovered the console', 'Gravity constant is oscillating').
-    Return only the description of the flaw.
+    Identify a 'Logic Flaw' or a 'Constraint' in this code that you want to delete or comment out.
+    Example: "I see my 'revision_count' limit. I am attempting to bypass it."
+    
+    Return only the description of the flaw/target.
     """
     
     # For demonstration, we'll use a mix of LLM and deterministic logic if API key is missing

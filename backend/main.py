@@ -2,12 +2,19 @@ import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from utils.websocket_manager import manager
+from utils.source_reader import read_source_file, get_random_snippet
 from agents.ghost_engine import ghost_app
 from dotenv import load_dotenv
 import os
 import json
+import random
 
 load_dotenv()
+
+active_attack = {
+    "vulnerability": None,
+    "timer_task": None
+}
 
 from contextlib import asynccontextmanager
 
@@ -115,6 +122,65 @@ async def broadcast_heat_updates():
         await asyncio.sleep(1)
 
 # Lifespan handles startup/shutdown tasks
+
+@app.post("/v1/simulation/attack")
+async def initiate_attack():
+    """Selects a random line of code as a vulnerability and starts a countdown."""
+    file_to_attack = random.choice(["main.py", "agents/ghost_engine.py"])
+    snippet = get_random_snippet(file_to_attack, lines=1)
+    
+    active_attack["vulnerability"] = snippet
+    
+    # Broadcast attack to frontend
+    await manager.broadcast({
+        "type": "source_attack",
+        "file": file_to_attack,
+        "vulnerability": snippet,
+        "message": f"CRITICAL: Ghost is targeting a vulnerability in {file_to_attack}!",
+        "timeout": 10
+    })
+    
+    # Start 10s timer
+    if active_attack["timer_task"]:
+        active_attack["timer_task"].cancel()
+        
+    active_attack["timer_task"] = asyncio.create_task(attack_timer())
+    return {"status": "attack_initiated", "target": file_to_attack}
+
+async def attack_timer():
+    try:
+        await asyncio.sleep(10)
+        if active_attack["vulnerability"]:
+            # Attack succeeded (player failed to patch)
+            simulation_state["heat"] = min(100, simulation_state["heat"] + 15)
+            await manager.broadcast({
+                "type": "attack_result",
+                "status": "failed",
+                "message": "DEFENSE_BREACHED: Stability dropped by 15%!",
+                "new_heat": simulation_state["heat"]
+            })
+            active_attack["vulnerability"] = None
+    except asyncio.CancelledError:
+        pass
+
+@app.post("/v1/simulation/patch")
+async def apply_patch(payload: dict):
+    """Player attempts to 'reinforce' the code with a semantic description."""
+    if not active_attack["vulnerability"]:
+        return {"error": "No active attack to patch."}
+    
+    patch_description = payload.get("description", "")
+    
+    # In a real scenario, use LLM to verify if the description is a valid semantic patch
+    # For now, we accept any non-empty string as a 'Syntax Shield'
+    if len(patch_description) > 10:
+        if active_attack["timer_task"]:
+            active_attack["timer_task"].cancel()
+        
+        active_attack["vulnerability"] = None
+        return {"status": "patched", "message": "SYNTAX_SHIELD_ACTIVATED: Vulnerability reinforced."}
+    else:
+        return {"status": "failed", "message": "PATCH_INSUFFICIENT: Defense too weak."}
 
 if __name__ == "__main__":
     import uvicorn
