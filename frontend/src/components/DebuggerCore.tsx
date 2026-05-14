@@ -5,13 +5,24 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal as TerminalIcon, Send, AlertTriangle, Cpu, ShieldAlert, Zap } from 'lucide-react';
 import { useSimulationSocket, LogEntry } from '@/hooks/useSimulationSocket';
 import { GlitchText } from '@/components/GlitchText';
+import { useCyberVoice } from '@/hooks/useCyberVoice';
+import { NeuralNet } from '@/components/NeuralNet';
 
 export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: number) => void }) => {
   const { stability, logs, isConnected, activeAttack, sendCommand } = useSimulationSocket('ws://localhost:8000/ws/heat');
+  const { speak } = useCyberVoice();
   const [input, setInput] = useState('');
   const [isGlitching, setIsGlitching] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Voice synthesis on ghost patches
+  useEffect(() => {
+    const lastLog = logs[logs.length - 1];
+    if (lastLog?.type === 'ghost') {
+      speak(lastLog.text);
+    }
+  }, [logs, speak]);
 
   useEffect(() => {
     if (onStabilityChange) onStabilityChange(stability);
@@ -139,34 +150,48 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
           )}
         </AnimatePresence>
 
-        {/* Terminal */}
-        <div 
-          ref={scrollRef}
-          className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-2 font-mono text-sm"
-        >
-          <AnimatePresence initial={false}>
-            {logs.map((log) => (
-              <motion.div
-                key={log.id}
-                initial={{ opacity: 0, x: -5 }}
-                animate={{ opacity: 1, x: 0 }}
-                className={`flex gap-3 leading-relaxed ${
-                  log.type === 'ghost' ? 'text-red-500 font-bold' : 
-                  log.type === 'player' ? 'text-white' : 
-                  log.type === 'system' ? 'text-cyan-400 italic' :
-                  log.type === 'error' ? 'text-red-600 font-black uppercase tracking-tighter' :
-                  log.type === 'success' ? 'text-[#00FF41] brightness-125' :
-                  'text-[#00FF41]'
-                }`}
-              >
-                <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
-                <span className="break-words">
-                  {log.type === 'ghost' && <span className="mr-2">⚠ GHOST:</span>}
-                  {log.text}
-                </span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
+        {/* Main Terminal View */}
+        <div className="flex-1 flex min-h-0 relative">
+          <div 
+            ref={scrollRef}
+            className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-2 font-mono text-sm relative z-10"
+          >
+            <AnimatePresence initial={false}>
+              {logs.map((log) => (
+                <motion.div
+                  key={log.id}
+                  initial={{ opacity: 0, x: -5 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className={`flex gap-3 leading-relaxed ${
+                    log.type === 'ghost' ? 'text-red-500 font-bold' : 
+                    log.type === 'player' ? 'text-white' : 
+                    log.type === 'system' ? 'text-cyan-400 italic' :
+                    log.type === 'error' ? 'text-red-600 font-black uppercase tracking-tighter' :
+                    log.type === 'success' ? 'text-[#00FF41] brightness-125' :
+                    'text-[#00FF41]'
+                  }`}
+                >
+                  <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
+                  <span className="break-words">
+                    {log.type === 'ghost' && <span className="mr-2">⚠ GHOST:</span>}
+                    {log.text}
+                  </span>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </div>
+
+          {/* Neural Feed Sidebar (Internal) */}
+          <div className="hidden xl:block w-64 border-l border-[#00FF41]/20 p-2 bg-black/50 overflow-hidden">
+             <NeuralNet />
+             <div className="mt-4 p-2 border border-[#00FF41]/10 text-[9px] text-[#00FF41]/40 uppercase leading-tight font-bold">
+                Neural_Web Visualization: Active
+                <br/>
+                Vector_Space_Recalculation...
+                <br/>
+                Status: INFILTRATED
+             </div>
+          </div>
         </div>
 
         {/* Command Line */}
