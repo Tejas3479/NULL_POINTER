@@ -82,9 +82,20 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            # Receive data if needed, but primarily used for broadcasting updates
             data = await websocket.receive_text()
-            # Handle incoming client messages if any
+            message = json.loads(data)
+            
+            if message.get("type") == "debug_command":
+                command = message.get("command", "")
+                print(f"--- PLAYER COMMAND RECEIVED: {command} ---")
+                
+                # Mock System_Admin response
+                # In a real scenario, this could trigger another LangGraph agent
+                await manager.send_personal_message(json.dumps({
+                    "type": "admin_response",
+                    "message": f"COMMAND_EXECUTED: {command.upper()} | STATUS: REDIRECTING_ENTROPY"
+                }), websocket)
+                
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 

@@ -1,58 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Terminal } from '@/components/Terminal';
-import { SourceEditor } from '@/components/SourceEditor';
+import React from 'react';
+import { DebuggerCore } from '@/components/DebuggerCore';
 import { Activity, Flame, Shield, Cpu } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-interface LogEntry {
-  id: string;
-  type: 'info' | 'error' | 'success' | 'warning';
-  message: string;
-  timestamp: string;
-}
+import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
 export default function Dashboard() {
-  const [heat, setHeat] = useState(0);
-  const [logs, setLogs] = useState<LogEntry[]>([
-    { id: '1', type: 'info', message: 'Initializing NULL_POINTER kernel...', timestamp: '17:27:01' },
-    { id: '2', type: 'success', message: 'WebSocket established at /ws/heat', timestamp: '17:27:02' },
-    { id: '3', type: 'info', message: 'Agentic logic loaded via LangGraph', timestamp: '17:27:03' },
-  ]);
-
-  useEffect(() => {
-    // WebSocket connection for real-time heat updates
-    const socket = new WebSocket('ws://localhost:8000/ws/heat');
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'heat_update') {
-        // Only update if not overridden by a reality patch stability score
-        setHeat(prev => data.value);
-      } else if (data.type === 'reality_patch') {
-        setHeat(data.stability);
-        // Add patches to the logs
-        setLogs(prev => [...prev, ...data.logs.map((msg: string, i: number) => ({
-          id: `${Date.now()}-${i}`,
-          type: 'warning',
-          message: msg,
-          timestamp: new Date().toLocaleTimeString([], { hour12: false })
-        }))]);
-      }
-    };
-
-    socket.onerror = (error) => {
-      setLogs(prev => [...prev, {
-        id: Date.now().toString(),
-        type: 'error',
-        message: 'WebSocket connection failed. Ensure backend is running.',
-        timestamp: new Date().toLocaleTimeString([], { hour12: false })
-      }]);
-    };
-
-    return () => socket.close();
-  }, []);
+  const { heat, stability, isConnected } = useSimulationSocket('ws://localhost:8000/ws/heat');
 
   return (
     <main className="p-6 max-w-[1600px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden">
@@ -64,24 +19,21 @@ export default function Dashboard() {
           </div>
           <div>
             <h1 className="font-orbitron text-2xl font-black tracking-tighter text-white">NULL_POINTER</h1>
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Autonomous Simulation System</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">
+              {isConnected ? 'LIVE_SYSTEM_ACTIVE' : 'SYSTEM_OFFLINE'}
+            </p>
           </div>
         </div>
 
         <div className="flex gap-8">
-          <StatBox icon={<Activity size={16}/>} label="Uptime" value="00:04:21" color="text-blue-400" />
-          <StatBox icon={<Shield size={16}/>} label="Integrity" value="99.9%" color="text-emerald-400" />
+          <StatBox icon={<Activity size={16}/>} label="Uptime" value="00:12:44" color="text-blue-400" />
+          <StatBox icon={<Shield size={16}/>} label="Integrity" value={`${stability}%`} color={stability < 40 ? 'text-red-500' : 'text-emerald-400'} />
         </div>
       </header>
 
       {/* Main Grid Content */}
-      <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-hidden">
-        <div className="flex-1">
-          <Terminal logs={logs} />
-        </div>
-        <div className="h-1/3">
-          <SourceEditor />
-        </div>
+      <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-hidden h-full">
+        <DebuggerCore />
       </div>
 
       {/* Sidebar Controls */}
@@ -116,16 +68,17 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Control Panel Placeholder */}
-        <div className="flex-1 glass p-6 rounded-lg border border-slate-800/50">
+        {/* System Control */}
+        <div className="flex-1 glass p-6 rounded-lg border border-slate-800/50 flex flex-col">
           <div className="flex items-center gap-2 mb-6">
             <Activity className="text-blue-400" size={18} />
             <h2 className="font-orbitron text-sm font-bold uppercase tracking-widest">System Control</h2>
           </div>
           
-          <div className="space-y-4">
+          <div className="space-y-4 flex-1">
              <ControlButton label="Initialize Loop" active />
              <ControlButton label="Inject Entropy" />
+             <div className="flex-1" />
              <ControlButton label="Hard Reset" destructive />
           </div>
         </div>
