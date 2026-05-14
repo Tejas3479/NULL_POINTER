@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal as TerminalIcon, Send, AlertTriangle, Cpu, ShieldAlert, Zap } from 'lucide-react';
 import { useSimulationSocket, LogEntry } from '@/hooks/useSimulationSocket';
+import { GlitchText } from '@/components/GlitchText';
 
 export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: number) => void }) => {
   const { stability, logs, isConnected, activeAttack, sendCommand } = useSimulationSocket('ws://localhost:8000/ws/heat');
@@ -111,7 +112,7 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 text-red-500">
                   <ShieldAlert size={24} className="animate-pulse" />
-                  <h3 className="font-black text-xl tracking-tighter uppercase italic">Vulnerability Detected</h3>
+                  <GlitchText text="Vulnerability Detected" className="font-black text-xl tracking-tighter uppercase italic" intensity="high" />
                 </div>
                 <div className="text-3xl font-black text-red-500 tabular-nums">
                   {timeLeft}s

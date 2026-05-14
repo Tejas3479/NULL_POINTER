@@ -3,7 +3,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from utils.websocket_manager import manager
 from utils.source_reader import read_source_file, get_random_snippet
-from agents.ghost_engine import ghost_app
+from agents.hive_mind import hive_mind_app
 from dotenv import load_dotenv
 import os
 import json
@@ -29,40 +29,43 @@ async def lifespan(app: FastAPI):
     ghost_task.cancel()
 
 async def run_ghost_cycle():
-    """Trigger the Ghost Engine every 30 seconds."""
+    """Background task that runs the Hive Mind agent cycle every 30 seconds."""
     current_state = {
         "stability_score": 100,
         "active_anomalies": [],
-        "simulation_logs": ["Ghost Engine Initialized."],
-        "current_flaw": "",
-        "proposed_patch": "",
+        "simulation_logs": ["HIVE_MIND_AWAKENED"],
         "revision_count": 0,
         "decision": ""
     }
     
     while True:
         try:
-            print("--- TRIGGERING GHOST ENGINE ---")
-            # Run the LangGraph
-            result = await ghost_app.ainvoke(current_state)
+            print("--- SIMULATION HEARTBEAT: HIVE_MIND AWAKENING ---")
+            # Invoke the LangGraph Hive Mind
+            result = await hive_mind_app.ainvoke(current_state)
             
-            # Update local state tracking
-            current_state.update(result)
-            simulation_state["stability"] = result["stability_score"]
+            # Update metrics
+            stability = result.get("stability_score", random.randint(30, 95))
+            simulation_state["stability"] = stability
+            agent_source = result.get("agent_source", "UNKNOWN")
+            patch = result.get("proposed_patch", "SIMULATION_DRIFT_DETECTED")
             
-            # Broadcast the patch and logs to frontend
-            if result.get("proposed_patch"):
-                await manager.broadcast({
-                    "type": "reality_patch",
-                    "patch": result["proposed_patch"],
-                    "stability": result["stability_score"],
-                    "logs": result["simulation_logs"][-2:] # Send latest logs
-                })
+            # Broadcast the Hive Mind's decision
+            await manager.broadcast({
+                "type": "reality_patch",
+                "stability": stability,
+                "agent": agent_source,
+                "patch": patch,
+                "logs": [f"[{agent_source}] REWRITING_REALITY: {patch[:50]}..."]
+            })
             
+            # Update for next cycle
+            current_state["stability_score"] = stability
             await asyncio.sleep(30)
+            
         except Exception as e:
-            print(f"Ghost Engine Error: {e}")
-            await asyncio.sleep(10) # Wait before retry
+            print(f"!!! HIVE_MIND CRITICAL ERROR: {e} !!!")
+            await asyncio.sleep(10)
 
 app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
 
