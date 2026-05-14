@@ -48,6 +48,7 @@ async def run_ghost_cycle():
             
             # Update local state tracking
             current_state.update(result)
+            simulation_state["stability"] = result["stability_score"]
             
             # Broadcast the patch and logs to frontend
             if result.get("proposed_patch"):
@@ -68,7 +69,7 @@ app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
 # Enable CORS for frontend interaction
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # In production, restrict this
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,6 +77,7 @@ app.add_middleware(
 
 simulation_state = {
     "heat": 0.0,
+    "stability": 100, # Linked to Ghost Engine
     "status": "idle",
     "logs": []
 }
