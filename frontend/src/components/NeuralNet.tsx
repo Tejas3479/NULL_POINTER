@@ -6,7 +6,7 @@ import { Points, PointMaterial, Line, Float } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import * as THREE from 'three';
 
-const NeuralNodes = ({ count = 200 }) => {
+const NeuralNodes = ({ count = 200, isAttacked = false }) => {
   const points = useMemo(() => {
     const p = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -21,8 +21,15 @@ const NeuralNodes = ({ count = 200 }) => {
 
   useFrame((state) => {
     const time = state.clock.getElapsedTime();
-    ref.current.rotation.y = time * 0.05;
-    ref.current.rotation.x = time * 0.02;
+    const speed = isAttacked ? 0.5 : 0.05;
+    ref.current.rotation.y = time * speed;
+    ref.current.rotation.x = time * (speed * 0.4);
+    
+    if (isAttacked) {
+       ref.current.scale.setScalar(1 + Math.sin(time * 10) * 0.1);
+    } else {
+       ref.current.scale.setScalar(1);
+    }
   });
 
   return (
@@ -56,7 +63,7 @@ const NeuralNodes = ({ count = 200 }) => {
   );
 };
 
-export const NeuralNet = () => {
+export const NeuralNet = ({ isAttacked = false }: { isAttacked?: boolean }) => {
   return (
     <div className="w-full h-full min-h-[200px] bg-black/40 rounded-lg border border-[#00FF41]/20 overflow-hidden relative">
       <div className="absolute top-2 left-3 z-10">
@@ -69,7 +76,7 @@ export const NeuralNet = () => {
         <pointLight position={[10, 10, 10]} />
         
         <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-          <NeuralNodes />
+          <NeuralNodes isAttacked={isAttacked} />
         </Float>
 
         <EffectComposer>

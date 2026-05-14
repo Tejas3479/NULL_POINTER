@@ -183,13 +183,13 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
 
           {/* Neural Feed Sidebar (Internal) */}
           <div className="hidden xl:block w-64 border-l border-[#00FF41]/20 p-2 bg-black/50 overflow-hidden">
-             <NeuralNet />
+             <NeuralNet isAttacked={!!activeAttack} />
              <div className="mt-4 p-2 border border-[#00FF41]/10 text-[9px] text-[#00FF41]/40 uppercase leading-tight font-bold">
                 Neural_Web Visualization: Active
                 <br/>
                 Vector_Space_Recalculation...
                 <br/>
-                Status: INFILTRATED
+                Status: {activeAttack ? 'BREACHED' : 'INFILTRATED'}
              </div>
           </div>
         </div>

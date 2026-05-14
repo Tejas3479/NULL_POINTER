@@ -112,12 +112,18 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 async def broadcast_heat_updates():
-    """Background task to simulate heat fluctuations"""
+    """Background task to simulate heat fluctuations synchronized with stability."""
+    import math
+    import time
+    
     while True:
-        # Simple oscillation for demonstration
-        import math
-        import time
-        simulation_state["heat"] = (math.sin(time.time() / 5) + 1) * 50
+        # Base oscillation
+        base_heat = (math.sin(time.time() / 10) + 1) * 20
+        
+        # Stability influence (low stability = high heat)
+        instability_factor = (100 - simulation_state["stability"]) * 0.8
+        
+        simulation_state["heat"] = min(100, base_heat + instability_factor)
         
         await manager.broadcast({
             "type": "heat_update",
