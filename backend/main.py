@@ -5,7 +5,7 @@ from backend.utils.websocket_manager import manager
 from backend.utils.source_reader import get_random_snippet
 from backend.agents.hive_mind import hive_mind_app
 from backend.services.sandbox_executor import router as sandbox_router
-from backend.services.world_store import evaluate_patch, world_store
+from backend.services.world_store import world_store
 from dotenv import load_dotenv
 import os
 import json
@@ -233,10 +233,16 @@ async def apply_patch(payload: dict):
     if not active_attack["vulnerability"]:
         return {"error": "No active attack to patch."}
     
-    patch_description = payload.get("description", "")
+    patch_code = payload.get("code") or payload.get("patch") or payload.get("description", "")
+    language = payload.get("language", "python")
+    player_id = payload.get("player_id", "local-player")
     
-    # In a real scenario, use LLM to verify if the description is a valid semantic patch
-    verdict = evaluate_patch(patch_description, active_attack["vulnerability"])
+    verdict = await world_store.accept_patch(
+        patch_code=patch_code,
+        vulnerability=active_attack["vulnerability"],
+        language=language,
+        player_id=player_id,
+    )
     if verdict["accepted"]:
         if active_attack["timer_task"]:
             active_attack["timer_task"].cancel()

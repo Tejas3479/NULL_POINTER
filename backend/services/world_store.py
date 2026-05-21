@@ -5,6 +5,8 @@ import os
 import random
 import re
 import uuid
+import ast
+import difflib
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from supabase import Client, create_client
+
+from backend.services.sandbox_executor import execute_code
 
 load_dotenv()
 
@@ -326,6 +330,168 @@ class WorldStore:
             agent["memory"] = agent["memory"][-8:]
         self.append_event("reality_patch", f"{agent_name} altered stability by {stability_delta}.", {"patch": patch})
 
+    async def accept_patch(
+        self,
+        patch_code: str,
+        vulnerability: str,
+        language: str = "python",
+        player_id: str = "local-player",
+    ) -> Dict[str, Any]:
+        """Validate, sandbox, score, and persist a player patch attempt.
+
+        For Python patches, `patch_code` is treated as the modified code body.
+        The original vulnerable snippet and patched code are both executed in
+        the sandbox, then scored from their runtime behavior.
+        """
+        patch_code = patch_code.strip()
+        vulnerability = vulnerability.strip()
+        language = language.lower().strip()
+        started_at = utc_now()
+
+        diff = build_code_diff(vulnerability, patch_code)
+        trace: Dict[str, Any] = {
+            "language": language,
+            "started_at": started_at,
+            "syntax": {"success": True, "error": ""},
+            "baseline": None,
+            "patched": None,
+        }
+
+        if language != "python":
+            verdict = self._patch_verdict(
+                accepted=False,
+                score=10,
+                reason="Sandbox patch verification currently requires Python so ast.parse can validate syntax.",
+                diff=diff,
+                trace=trace,
+            )
+            self._store_patch_trace(player_id, vulnerability, patch_code, verdict)
+            return verdict
+
+        try:
+            ast.parse(patch_code)
+        except SyntaxError as exc:
+            trace["syntax"] = {
+                "success": False,
+                "error": f"{exc.msg} at line {exc.lineno}, column {exc.offset}",
+            }
+            verdict = self._patch_verdict(
+                accepted=False,
+                score=5,
+                reason=f"Patch has invalid Python syntax: {trace['syntax']['error']}",
+                diff=diff,
+                trace=trace,
+            )
+            self._store_patch_trace(player_id, vulnerability, patch_code, verdict)
+            return verdict
+
+        baseline = await execute_code(vulnerability, language)
+        patched = await execute_code(patch_code, language)
+        trace["baseline"] = baseline.model_dump()
+        trace["patched"] = patched.model_dump()
+
+        if not patched.success:
+            verdict = self._patch_verdict(
+                accepted=False,
+                score=15,
+                reason="Patch introduced a runtime error during sandbox execution.",
+                diff=diff,
+                trace=trace,
+            )
+        elif not baseline.success and patched.success:
+            verdict = self._patch_verdict(
+                accepted=True,
+                score=95,
+                reason="Patch fixes the vulnerable snippet: baseline failed, patched code executed successfully.",
+                diff=diff,
+                trace=trace,
+            )
+        elif baseline.success and patched.success and baseline.output != patched.output:
+            verdict = self._patch_verdict(
+                accepted=True,
+                score=80,
+                reason="Patch executed successfully and changed the vulnerable snippet output.",
+                diff=diff,
+                trace=trace,
+            )
+        elif baseline.success and patched.success and diff.strip():
+            verdict = self._patch_verdict(
+                accepted=True,
+                score=62,
+                reason="Patch executed successfully, but sandbox output did not prove a behavioral fix.",
+                diff=diff,
+                trace=trace,
+            )
+        else:
+            verdict = self._patch_verdict(
+                accepted=False,
+                score=25,
+                reason="Sandbox could not prove that the patch fixed the vulnerability.",
+                diff=diff,
+                trace=trace,
+            )
+
+        self._store_patch_trace(player_id, vulnerability, patch_code, verdict)
+        return verdict
+
+    def _patch_verdict(
+        self,
+        *,
+        accepted: bool,
+        score: int,
+        reason: str,
+        diff: str,
+        trace: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return {
+            "accepted": accepted,
+            "score": max(0, min(100, score)),
+            "reason": reason,
+            "diff": diff,
+            "suggested_diff": diff,
+            "sandbox_trace": trace,
+        }
+
+    def _store_patch_trace(
+        self,
+        player_id: str,
+        vulnerability: str,
+        patch_code: str,
+        verdict: Dict[str, Any],
+    ) -> None:
+        payload = {
+            "id": str(uuid.uuid4()),
+            "world_id": self.state["world_id"],
+            "player_id": player_id,
+            "tick": self.state["tick"],
+            "vulnerability": vulnerability,
+            "patch_code": patch_code,
+            "diff": verdict["diff"],
+            "score": verdict["score"],
+            "accepted": verdict["accepted"],
+            "feedback": verdict["reason"],
+            "sandbox_trace": verdict["sandbox_trace"],
+            "created_at": utc_now(),
+        }
+
+        if self.supabase:
+            try:
+                self.supabase.table("patch_traces").insert(payload).execute()
+            except Exception as exc:
+                payload["supabase_error"] = str(exc)
+
+        self.append_event(
+            "patch_trace",
+            f"Patch scored {verdict['score']}: {verdict['reason']}",
+            {
+                "trace_id": payload["id"],
+                "score": verdict["score"],
+                "accepted": verdict["accepted"],
+                "diff": verdict["diff"],
+                "sandbox_trace": verdict["sandbox_trace"],
+            },
+        )
+
 
 PATCH_KEYWORDS = {
     "specificity": ("because", "therefore", "line", "function", "endpoint", "state", "timer", "validate", "sanitize"),
@@ -349,6 +515,18 @@ def evaluate_patch(description: str, vulnerability: str) -> Dict[str, Any]:
         "reason": "Patch names the vulnerable code path and proposes a concrete guard." if accepted else "Patch needs to reference the vulnerable logic and describe a concrete code change.",
         "suggested_diff": build_suggested_diff(description, vulnerability),
     }
+
+
+def build_code_diff(original_code: str, patched_code: str) -> str:
+    return "\n".join(
+        difflib.unified_diff(
+            original_code.splitlines(),
+            patched_code.splitlines(),
+            fromfile="vulnerable.py",
+            tofile="patched.py",
+            lineterm="",
+        )
+    )
 
 
 def build_suggested_diff(description: str, vulnerability: str) -> str:
