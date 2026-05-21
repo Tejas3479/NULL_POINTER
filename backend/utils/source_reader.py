@@ -1,10 +1,14 @@
 import os
+from pathlib import Path
+
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 def read_source_file(file_path: str) -> str:
     """Reads a source file from the backend directory."""
     try:
-        # Assuming we are running from the backend or root
-        with open(file_path, "r") as f:
+        requested = Path(file_path)
+        path = requested if requested.is_absolute() else BACKEND_ROOT / requested
+        with path.open("r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         return f"# Error reading source: {e}"

@@ -2,15 +2,16 @@
 
 import React from 'react';
 import { DebuggerCore } from '@/components/DebuggerCore';
-import { Activity, Flame, Shield, Cpu } from 'lucide-react';
+import { SimulationWorldMap } from '@/components/SimulationWorldMap';
+import { Activity, Flame, Shield, Cpu, RadioTower } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
 export default function Dashboard() {
-  const { heat, stability, isConnected } = useSimulationSocket('ws://localhost:8000/ws/heat');
+  const { heat, stability, isConnected, world, updateWorldParameter, spawnAgent } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
 
   return (
-    <main className="p-6 max-w-[1600px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden">
+    <main className="p-6 max-w-[1800px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden">
       {/* Header Stat Bar */}
       <header className="col-span-12 flex items-center justify-between mb-2">
         <div className="flex items-center gap-4">
@@ -26,20 +27,28 @@ export default function Dashboard() {
         </div>
 
         <div className="flex gap-8">
-          <StatBox icon={<Activity size={16}/>} label="Uptime" value="00:12:44" color="text-blue-400" />
+          <StatBox icon={<RadioTower size={16}/>} label="World Tick" value={`${world?.tick ?? 0}`} color="text-cyan-400" />
           <StatBox icon={<Shield size={16}/>} label="Integrity" value={`${stability}%`} color={stability < 40 ? 'text-red-500' : 'text-emerald-400'} />
         </div>
       </header>
 
       {/* Main Grid Content */}
-      <div className="col-span-12 lg:col-span-8 flex flex-col gap-6 overflow-hidden h-full">
+      <div className="col-span-12 xl:col-span-7 flex flex-col gap-6 overflow-hidden h-full">
         <DebuggerCore />
       </div>
 
       {/* Sidebar Controls */}
-      <aside className="col-span-12 lg:col-span-4 flex flex-col gap-6 overflow-hidden">
+      <aside className="col-span-12 xl:col-span-5 flex flex-col gap-6 overflow-hidden">
+        <div className="flex-1 min-h-0">
+          <SimulationWorldMap
+            world={world}
+            onParameterChange={updateWorldParameter}
+            onSpawnAgent={spawnAgent}
+          />
+        </div>
+
         {/* Heat Meter Card */}
-        <div className="glass p-6 rounded-lg border border-slate-800/50 flex flex-col gap-4 relative overflow-hidden">
+        <div className="glass p-5 rounded-lg border border-slate-800/50 flex flex-col gap-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <Flame size={80} className={heat > 70 ? 'text-red-500' : 'text-orange-500'} />
           </div>
@@ -69,7 +78,7 @@ export default function Dashboard() {
         </div>
 
         {/* System Control */}
-        <div className="flex-1 glass p-6 rounded-lg border border-slate-800/50 flex flex-col">
+        <div className="glass p-5 rounded-lg border border-slate-800/50 flex flex-col">
           <div className="flex items-center gap-2 mb-6">
             <Activity className="text-blue-400" size={18} />
             <h2 className="font-orbitron text-sm font-bold uppercase tracking-widest">System Control</h2>
@@ -78,7 +87,6 @@ export default function Dashboard() {
           <div className="space-y-4 flex-1">
              <ControlButton label="Initialize Loop" active />
              <ControlButton label="Inject Entropy" />
-             <div className="flex-1" />
              <ControlButton label="Hard Reset" destructive />
           </div>
         </div>

@@ -1,8 +1,8 @@
 from pydantic import BaseModel, Field
-from typing import List, Annotated, TypedDict
+from typing import Any, Dict, List, Annotated, TypedDict
 import operator
 
-class SimState(TypedDict):
+class SimState(TypedDict, total=False):
     stability_score: int
     active_anomalies: Annotated[List[str], operator.add]
     simulation_logs: Annotated[List[str], operator.add]
@@ -10,6 +10,9 @@ class SimState(TypedDict):
     proposed_patch: str
     revision_count: int
     decision: str
+    agent_source: str
+    next_agent: str
+    selected_agent: Dict[str, Any]
 
 class GhostResponse(BaseModel):
     flaw: str

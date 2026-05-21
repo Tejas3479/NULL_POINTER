@@ -8,3 +8,4 @@ supabase==2.4.6
 websockets==12.0
 langchain-openai
 python-dotenv==1.0.1
+docker==7.1.0

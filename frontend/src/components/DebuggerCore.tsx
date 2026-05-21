@@ -1,20 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal as TerminalIcon, Send, AlertTriangle, Cpu, ShieldAlert, Zap } from 'lucide-react';
-import { useSimulationSocket, LogEntry } from '@/hooks/useSimulationSocket';
+import { Send, AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
+import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 import { GlitchText } from '@/components/GlitchText';
 import { useCyberVoice } from '@/hooks/useCyberVoice';
 import { NeuralNet } from '@/components/NeuralNet';
 
 export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: number) => void }) => {
-  const { stability, logs, isConnected, activeAttack, sendCommand } = useSimulationSocket('ws://localhost:8000/ws/heat');
+  const { stability, logs, isConnected, activeAttack, sendCommand } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
   const { speak } = useCyberVoice();
   const [input, setInput] = useState('');
   const [isGlitching, setIsGlitching] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [now, setNow] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const matrixRows = useMemo(
+    () => Array.from({ length: 50 }, (_, i) => ((i + 1) * 2654435761).toString(36).repeat(4).slice(0, 98)),
+    []
+  );
 
   // Voice synthesis on ghost patches
   useEffect(() => {
@@ -39,9 +43,8 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
 
   useEffect(() => {
     if (activeAttack) {
-      setTimeLeft(activeAttack.timeout);
       const timer = setInterval(() => {
-        setTimeLeft(prev => Math.max(0, prev - 1));
+        setNow(Date.now());
       }, 1000);
       return () => clearInterval(timer);
     }
@@ -59,6 +62,12 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
     sendCommand(input);
     setInput('');
   };
+
+  const timeLeft = activeAttack
+    ? now === 0
+      ? activeAttack.timeout
+      : Math.max(0, activeAttack.timeout - Math.floor((now - activeAttack.startTime) / 1000))
+    : 0;
 
   const glitchVariants = {
     normal: { x: 0, skewX: 0, filter: 'hue-rotate(0deg) contrast(1)', opacity: 1 },
@@ -80,9 +89,9 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
     <div className="relative w-full h-full bg-black text-[#00FF41] font-mono overflow-hidden flex flex-col border border-[#00FF41]/40 shadow-[0_0_30px_rgba(0,255,65,0.15)] rounded-sm">
       {/* Matrix Background Effect */}
       <div className="absolute inset-0 opacity-5 pointer-events-none overflow-hidden text-[8px] leading-[8px] select-none">
-        {[...Array(50)].map((_, i) => (
+        {matrixRows.map((row, i) => (
           <div key={i} className="whitespace-nowrap animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>
-            {Math.random().toString(36).substring(2, 100)}
+            {row}
           </div>
         ))}
       </div>
@@ -173,7 +182,7 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
                 >
                   <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
                   <span className="break-words">
-                    {log.type === 'ghost' && <span className="mr-2">⚠ GHOST:</span>}
+                    {log.type === 'ghost' && <span className="mr-2">GHOST:</span>}
                     {log.text}
                   </span>
                 </motion.div>

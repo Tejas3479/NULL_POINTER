@@ -1,9 +1,11 @@
 import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from utils.websocket_manager import manager
-from utils.source_reader import read_source_file, get_random_snippet
-from agents.hive_mind import hive_mind_app
+from backend.utils.websocket_manager import manager
+from backend.utils.source_reader import get_random_snippet
+from backend.agents.hive_mind import hive_mind_app
+from backend.services.sandbox_executor import router as sandbox_router
+from backend.services.world_store import evaluate_patch, world_store
 from dotenv import load_dotenv
 import os
 import json
@@ -31,7 +33,7 @@ async def lifespan(app: FastAPI):
 async def run_ghost_cycle():
     """Background task that runs the Hive Mind agent cycle every 30 seconds."""
     current_state = {
-        "stability_score": 100,
+        "stability_score": world_store.snapshot()["stability"],
         "active_anomalies": [],
         "simulation_logs": ["HIVE_MIND_AWAKENED"],
         "revision_count": 0,
@@ -49,6 +51,8 @@ async def run_ghost_cycle():
             simulation_state["stability"] = stability
             agent_source = result.get("agent_source", "UNKNOWN")
             patch = result.get("proposed_patch", "SIMULATION_DRIFT_DETECTED")
+            world_store.remember_patch(agent_source, patch, stability - current_state["stability_score"])
+            world = world_store.advance_tick(stability=stability, heat=simulation_state["heat"])
             
             # Broadcast the Hive Mind's decision
             await manager.broadcast({
@@ -56,6 +60,7 @@ async def run_ghost_cycle():
                 "stability": stability,
                 "agent": agent_source,
                 "patch": patch,
+                "world": world,
                 "logs": [f"[{agent_source}] REWRITING_REALITY: {patch[:50]}..."]
             })
             
@@ -68,6 +73,7 @@ async def run_ghost_cycle():
             await asyncio.sleep(10)
 
 app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
+app.include_router(sandbox_router)
 
 # Enable CORS for frontend interaction
 app.add_middleware(
@@ -79,8 +85,8 @@ app.add_middleware(
 )
 
 simulation_state = {
-    "heat": 0.0,
-    "stability": 100, # Linked to Ghost Engine
+    "heat": world_store.snapshot()["heat"],
+    "stability": world_store.snapshot()["stability"], # Linked to Ghost Engine
     "status": "idle",
     "logs": []
 }
@@ -88,6 +94,28 @@ simulation_state = {
 @app.get("/")
 async def health_check():
     return {"status": "alive", "simulation": simulation_state["status"]}
+
+@app.get("/v1/simulation/world")
+async def get_world():
+    return world_store.snapshot()
+
+@app.post("/v1/simulation/world/parameters")
+async def update_world_parameters(payload: dict):
+    world = world_store.update_parameters(payload.get("parameters", payload))
+    await manager.broadcast({"type": "world_update", "world": world})
+    return world
+
+@app.post("/v1/simulation/agents/spawn")
+async def spawn_agent(payload: dict):
+    agent = world_store.spawn_agent(payload.get("archetype_id", ""), payload.get("name"))
+    world = world_store.snapshot()
+    await manager.broadcast({
+        "type": "agent_spawned",
+        "agent": agent,
+        "world": world,
+        "message": f"{agent['name']} entered the simulation."
+    })
+    return {"agent": agent, "world": world}
 
 @app.websocket("/ws/heat")
 async def websocket_endpoint(websocket: WebSocket):
@@ -100,16 +128,39 @@ async def websocket_endpoint(websocket: WebSocket):
             if message.get("type") == "debug_command":
                 command = message.get("command", "")
                 print(f"--- PLAYER COMMAND RECEIVED: {command} ---")
-                
-                # Mock System_Admin response
-                # In a real scenario, this could trigger another LangGraph agent
-                await manager.send_personal_message(json.dumps({
-                    "type": "admin_response",
-                    "message": f"COMMAND_EXECUTED: {command.upper()} | STATUS: REDIRECTING_ENTROPY"
-                }), websocket)
+                await handle_debug_command(command, websocket)
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+
+async def handle_debug_command(command: str, websocket: WebSocket):
+    lowered = command.lower().strip()
+    if lowered.startswith("spawn "):
+        archetype_id = lowered.split(" ", 1)[1].strip()
+        try:
+            agent = world_store.spawn_agent(archetype_id)
+            await manager.broadcast({"type": "agent_spawned", "agent": agent, "world": world_store.snapshot()})
+        except ValueError:
+            await manager.send_personal_message(json.dumps({
+                "type": "admin_response",
+                "message": f"SPAWN_FAILED: UNKNOWN_ARCHETYPE {archetype_id}"
+            }), websocket)
+        return
+
+    if lowered.startswith("world "):
+        parts = lowered.split()
+        if len(parts) == 3:
+            try:
+                world = world_store.update_parameters({parts[1]: float(parts[2])})
+                await manager.broadcast({"type": "world_update", "world": world})
+                return
+            except ValueError:
+                pass
+
+    await manager.send_personal_message(json.dumps({
+        "type": "admin_response",
+        "message": f"COMMAND_EXECUTED: {command.upper()} | STATUS: REDIRECTING_ENTROPY"
+    }), websocket)
 
 async def broadcast_heat_updates():
     """Background task to simulate heat fluctuations synchronized with stability."""
@@ -124,6 +175,7 @@ async def broadcast_heat_updates():
         instability_factor = (100 - simulation_state["stability"]) * 0.8
         
         simulation_state["heat"] = min(100, base_heat + instability_factor)
+        world_store.state["heat"] = simulation_state["heat"]
         
         await manager.broadcast({
             "type": "heat_update",
@@ -141,6 +193,7 @@ async def initiate_attack():
     snippet = get_random_snippet(file_to_attack, lines=1)
     
     active_attack["vulnerability"] = snippet
+    world_store.append_event("source_attack", f"Ghost targeted {file_to_attack}.", {"file": file_to_attack, "snippet": snippet})
     
     # Broadcast attack to frontend
     await manager.broadcast({
@@ -183,15 +236,26 @@ async def apply_patch(payload: dict):
     patch_description = payload.get("description", "")
     
     # In a real scenario, use LLM to verify if the description is a valid semantic patch
-    # For now, we accept any non-empty string as a 'Syntax Shield'
-    if len(patch_description) > 10:
+    verdict = evaluate_patch(patch_description, active_attack["vulnerability"])
+    if verdict["accepted"]:
         if active_attack["timer_task"]:
             active_attack["timer_task"].cancel()
         
+        world_store.append_event("patch_accepted", "Operator patch accepted.", verdict)
         active_attack["vulnerability"] = None
-        return {"status": "patched", "message": "SYNTAX_SHIELD_ACTIVATED: Vulnerability reinforced."}
+        return {
+            "status": "patched",
+            "message": f"SYNTAX_SHIELD_ACTIVATED: {verdict['reason']}",
+            "verdict": verdict,
+            "world": world_store.snapshot(),
+        }
     else:
-        return {"status": "failed", "message": "PATCH_INSUFFICIENT: Defense too weak."}
+        world_store.append_event("patch_rejected", "Operator patch rejected.", verdict)
+        return {
+            "status": "failed",
+            "message": f"PATCH_INSUFFICIENT ({verdict['score']}): {verdict['reason']}",
+            "verdict": verdict,
+        }
 
 if __name__ == "__main__":
     import uvicorn

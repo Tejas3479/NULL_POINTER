@@ -18,19 +18,6 @@ export const GlitchText = ({ text, className = "", intensity = 'medium' }: Glitc
 
   const { duration, spread } = intensities[intensity];
 
-  const glitchVariants = {
-    initial: { x: 0, opacity: 1 },
-    animate: {
-      x: [0, -spread, spread, -spread / 2, spread / 2, 0],
-      opacity: [1, 0.8, 0.9, 0.7, 1],
-      transition: {
-        duration,
-        repeat: Infinity,
-        repeatType: "mirror" as const,
-      }
-    }
-  };
-
   return (
     <div className={`relative inline-block ${className}`}>
       {/* Main Text */}

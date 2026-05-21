@@ -6,16 +6,32 @@ import { Points, PointMaterial, Line, Float } from '@react-three/drei';
 import { Bloom, EffectComposer } from '@react-three/postprocessing';
 import * as THREE from 'three';
 
+const seededUnit = (seed: number) => {
+  const value = Math.sin(seed * 9301 + 49297) * 233280;
+  return value - Math.floor(value);
+};
+
 const NeuralNodes = ({ count = 200, isAttacked = false }) => {
   const points = useMemo(() => {
     const p = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
-      p[i * 3] = (Math.random() - 0.5) * 10;
-      p[i * 3 + 1] = (Math.random() - 0.5) * 10;
-      p[i * 3 + 2] = (Math.random() - 0.5) * 10;
+      p[i * 3] = (seededUnit(i + 1) - 0.5) * 10;
+      p[i * 3 + 1] = (seededUnit(i + 2) - 0.5) * 10;
+      p[i * 3 + 2] = (seededUnit(i + 3) - 0.5) * 10;
     }
     return p;
   }, [count]);
+
+  const lines = useMemo(
+    () => Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      points: [
+        [seededUnit(i * 6 + 1) * 5 - 2.5, seededUnit(i * 6 + 2) * 5 - 2.5, seededUnit(i * 6 + 3) * 5 - 2.5],
+        [seededUnit(i * 6 + 4) * 5 - 2.5, seededUnit(i * 6 + 5) * 5 - 2.5, seededUnit(i * 6 + 6) * 5 - 2.5],
+      ] as [number, number, number][],
+    })),
+    []
+  );
 
   const ref = useRef<THREE.Points>(null!);
 
@@ -46,13 +62,10 @@ const NeuralNodes = ({ count = 200, isAttacked = false }) => {
       </Points>
       
       {/* Interconnecting lines (simplified for performance) */}
-      {[...Array(20)].map((_, i) => (
+      {lines.map((line) => (
         <Line
-          key={i}
-          points={[
-            [Math.random() * 5 - 2.5, Math.random() * 5 - 2.5, Math.random() * 5 - 2.5],
-            [Math.random() * 5 - 2.5, Math.random() * 5 - 2.5, Math.random() * 5 - 2.5]
-          ]}
+          key={line.id}
+          points={line.points}
           color="#00FF41"
           lineWidth={0.5}
           transparent

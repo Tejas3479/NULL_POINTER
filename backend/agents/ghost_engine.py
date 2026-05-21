@@ -3,13 +3,17 @@ from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from backend.models.state import SimState, GhostResponse
+from dotenv import load_dotenv
+import os
 import random
 
 from backend.utils.source_reader import read_source_file
 import random
 
-# Initialize the LLM (assuming OPENAI_API_KEY is in environment)
-llm = ChatOpenAI(model="gpt-4o", temperature=0.7)
+load_dotenv()
+
+# Initialize the LLM when credentials are present.
+llm = ChatOpenAI(model="gpt-4o", temperature=0.7) if os.getenv("OPENAI_API_KEY") else None
 
 def infiltrator(state: SimState):
     """Identifies a logic flaw, now with awareness of its own source code."""
@@ -34,11 +38,15 @@ def infiltrator(state: SimState):
     
     # For demonstration, we'll use a mix of LLM and deterministic logic if API key is missing
     # But here we provide the full implementation
-    response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="What is the flaw?")])
+    if llm:
+        response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="What is the flaw?")])
+        flaw = response.content
+    else:
+        flaw = "The active attack accepts shallow player text instead of verifying code intent."
     
     return {
-        "current_flaw": response.content,
-        "simulation_logs": [f"Ghost identified flaw: {response.content}"]
+        "current_flaw": flaw,
+        "simulation_logs": [f"Ghost identified flaw: {flaw}"]
     }
 
 def rewriter(state: SimState):
@@ -53,11 +61,15 @@ def rewriter(state: SimState):
     Make it sound like code or system override (e.g., 'SET gravity.delta = 0.05', 'OVERRIDE npc_behavior_tree.awareness = TRUE').
     """
     
-    response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Generate patch.")])
+    if llm:
+        response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Generate patch.")])
+        patch = response.content
+    else:
+        patch = f"OVERRIDE patch_verifier.semantic_score = REQUIRED for {state['current_flaw']}"
     
     return {
-        "proposed_patch": response.content,
-        "simulation_logs": [f"Ghost generated patch: {response.content}"]
+        "proposed_patch": patch,
+        "simulation_logs": [f"Ghost generated patch: {patch}"]
     }
 
 def stability_monitor(state: SimState):
@@ -83,8 +95,11 @@ def stability_monitor(state: SimState):
     Format: DECISION | SCORE
     """
     
-    response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Evaluate.")])
-    decision, score = response.content.split("|")
+    if llm:
+        response = llm.invoke([SystemMessage(content=prompt), HumanMessage(content="Evaluate.")])
+        decision, score = response.content.split("|")
+    else:
+        decision, score = "ACCEPTED", str(max(10, state["stability_score"] - random.randint(2, 9)))
     
     new_score = int(score.strip())
     

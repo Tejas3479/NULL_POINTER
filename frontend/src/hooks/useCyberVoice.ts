@@ -1,26 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const useCyberVoice = () => {
-  const [synth, setSynth] = useState<SpeechSynthesis | null>(null);
+  const synthRef = useRef<SpeechSynthesis | null>(null);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const s = window.speechSynthesis;
-      setSynth(s);
+      synthRef.current = s;
       
       const updateVoices = () => {
         setVoices(s.getVoices());
       };
 
       s.onvoiceschanged = updateVoices;
-      updateVoices();
+      const timer = window.setTimeout(updateVoices, 0);
+      return () => {
+        window.clearTimeout(timer);
+        s.onvoiceschanged = null;
+      };
     }
   }, []);
 
   const speak = useCallback((text: string, options: { pitch?: number, rate?: number } = {}) => {
+    const synth = synthRef.current;
     if (!synth) return;
 
     // Cancel any ongoing speech
@@ -45,7 +50,7 @@ export const useCyberVoice = () => {
     utterance.volume = 0.8;
 
     synth.speak(utterance);
-  }, [synth, voices]);
+  }, [voices]);
 
   return { speak };
 };

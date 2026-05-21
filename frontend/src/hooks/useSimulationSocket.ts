@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 
 export interface LogEntry {
   id: string;
@@ -15,15 +15,40 @@ export interface ActiveAttack {
   startTime: number;
 }
 
+export interface SimulationWorld {
+  world_id: string;
+  tick: number;
+  heat: number;
+  stability: number;
+  parameters: Record<string, number>;
+  factions: Array<{ id: string; name: string; territory: number; influence: number; stance: string }>;
+  anomalies: Array<{ id: string; name: string; x: number; y: number; z: number; severity: number; faction: string }>;
+  agent_archetypes: Array<{ id: string; name: string; role: string; temperament: string; unlocked: boolean }>;
+  agents: Array<{ id: string; archetype_id: string; name: string; loyalty: string; mood: string; memory: string[]; active: boolean }>;
+  lore: Array<{ id: string; title: string; body: string; tick: number }>;
+  events: Array<{ id: string; kind: string; message: string; tick: number; created_at: string }>;
+}
+
 export const useSimulationSocket = (url: string) => {
+  const apiBase = useMemo(() => url.replace(/^ws/, 'http').replace(/\/ws\/heat$/, ''), [url]);
   const [heat, setHeat] = useState(100);
   const [stability, setStability] = useState(100);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [activeAttack, setActiveAttack] = useState<ActiveAttack | null>(null);
+  const [world, setWorld] = useState<SimulationWorld | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    fetch(`${apiBase}/v1/simulation/world`)
+      .then((res) => res.json())
+      .then((data) => {
+        setWorld(data);
+        setHeat(data.heat ?? 100);
+        setStability(data.stability ?? 100);
+      })
+      .catch(() => undefined);
+
     const socket = new WebSocket(url);
     socketRef.current = socket;
 
@@ -38,6 +63,7 @@ export const useSimulationSocket = (url: string) => {
         setHeat(data.value);
       } else if (data.type === 'reality_patch') {
         setStability(data.stability);
+        if (data.world) setWorld(data.world);
         setLogs(prev => [
           ...prev, 
           ...data.logs.map((msg: string, i: number) => ({
@@ -74,11 +100,21 @@ export const useSimulationSocket = (url: string) => {
           timestamp
         }]);
         if (data.new_heat) setHeat(data.new_heat);
+      } else if (data.type === 'world_update' || data.type === 'agent_spawned') {
+        if (data.world) setWorld(data.world);
+        if (data.message) {
+          setLogs(prev => [...prev, {
+            id: Date.now().toString(),
+            type: 'system',
+            text: data.message,
+            timestamp
+          }]);
+        }
       }
     };
 
     return () => socket.close();
-  }, [url]);
+  }, [url, apiBase]);
 
   const sendCommand = useCallback(async (command: string) => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
@@ -86,7 +122,7 @@ export const useSimulationSocket = (url: string) => {
       if (command.toLowerCase().startsWith('patch ') && activeAttack) {
         const description = command.substring(6);
         try {
-          const res = await fetch('http://localhost:8000/v1/simulation/patch', {
+          const res = await fetch(`${apiBase}/v1/simulation/patch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ description })
@@ -102,6 +138,7 @@ export const useSimulationSocket = (url: string) => {
           
           if (result.status === 'patched') {
             setActiveAttack(null);
+            if (result.world) setWorld(result.world);
           }
         } catch (e) {
           console.error("Patch failed", e);
@@ -121,7 +158,27 @@ export const useSimulationSocket = (url: string) => {
         timestamp: new Date().toLocaleTimeString([], { hour12: false })
       }]);
     }
-  }, [activeAttack]);
+  }, [activeAttack, apiBase]);
 
-  return { heat, stability, logs, isConnected, activeAttack, sendCommand };
+  const updateWorldParameter = useCallback(async (key: string, value: number) => {
+    const res = await fetch(`${apiBase}/v1/simulation/world/parameters`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parameters: { [key]: value } })
+    });
+    const result = await res.json();
+    setWorld(result);
+  }, [apiBase]);
+
+  const spawnAgent = useCallback(async (archetypeId: string) => {
+    const res = await fetch(`${apiBase}/v1/simulation/agents/spawn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ archetype_id: archetypeId })
+    });
+    const result = await res.json();
+    if (result.world) setWorld(result.world);
+  }, [apiBase]);
+
+  return { heat, stability, logs, isConnected, activeAttack, world, sendCommand, updateWorldParameter, spawnAgent };
 };
