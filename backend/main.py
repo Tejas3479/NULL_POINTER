@@ -247,7 +247,7 @@ async def apply_patch(payload: dict):
     player_id = payload.get("player_id", "local-player")
     
     if description and not code:
-        from backend.services.world_store import evaluate_patch
+        from backend.services.world_store import evaluate_patch, utc_now
         raw_verdict = evaluate_patch(description, active_attack["vulnerability"])
         verdict = {
             "accepted": raw_verdict["accepted"],

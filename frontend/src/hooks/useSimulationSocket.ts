@@ -131,16 +131,15 @@ export const useSimulationSocket = (url: string) => {
           });
           const result = await res.json();
           
-          setLogs(prev => [...prev, {
-            id: Date.now().toString(),
-            type: result.status === 'patched' ? 'success' : 'error',
-            text: result.message,
-            timestamp: new Date().toLocaleTimeString([], { hour12: false })
-          }]);
-          
           if (result.status === 'patched') {
-            setActiveAttack(null);
-            if (result.world) setWorld(result.world);
+            // Success is broadcasted over the WebSocket to prevent duplicate logs.
+          } else {
+            setLogs(prev => [...prev, {
+              id: Date.now().toString(),
+              type: 'error',
+              text: result.message,
+              timestamp: new Date().toLocaleTimeString([], { hour12: false })
+            }]);
           }
         } catch (e) {
           console.error("Patch failed", e);

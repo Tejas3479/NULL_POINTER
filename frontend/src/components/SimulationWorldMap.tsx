@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
-import { Activity, GitBranch, RadioTower, Sparkles, UserPlus, Crosshair, MapPin } from 'lucide-react';
+import { Activity, GitBranch, RadioTower, Sparkles, Crosshair } from 'lucide-react';
 import { SimulationWorld } from '@/hooks/useSimulationSocket';
 
 const factionColors: Record<string, string> = {
@@ -114,7 +114,7 @@ export function SimulationWorldMap({
         </div>
 
         {selectedAnomaly && (
-          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 bg-black/60 border border-slate-850 px-2 py-1 rounded text-[9px] uppercase tracking-wider text-slate-400 font-mono">
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 bg-black/60 border border-slate-800 px-2 py-1 rounded text-[9px] uppercase tracking-wider text-slate-400 font-mono">
             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
             Active Target: {selectedAnomaly.name}
             <button 
@@ -172,7 +172,7 @@ export function SimulationWorldMap({
           {latestLore && (
             <div className="border-t border-slate-800/60 pt-3 mt-3">
               <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-1">Latest Lore Entry</div>
-              <p className="text-[11px] text-slate-400 leading-relaxed italic truncate-2-lines">{latestLore.body}</p>
+              <p className="text-[11px] text-slate-400 leading-relaxed italic line-clamp-2">{latestLore.body}</p>
             </div>
           )}
         </div>
@@ -186,7 +186,7 @@ export function SimulationWorldMap({
             </div>
             <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
               {world.agents.map((agent) => (
-                <div key={agent.id} className="border border-slate-850 bg-black/40 p-2 rounded transition-all hover:border-slate-700">
+                <div key={agent.id} className="border border-slate-800 bg-black/40 p-2 rounded transition-all hover:border-slate-700">
                   <div className="flex justify-between gap-2 text-xs">
                     <span className="text-white font-bold truncate">{agent.name}</span>
                     <span className="text-slate-500 uppercase text-[9px]">{agent.mood}</span>
@@ -231,7 +231,7 @@ export function SimulationWorldMap({
 
             {selectedAnomaly ? (
               /* Selected Anomaly Details */
-              <div className="space-y-3 p-3 bg-black/40 border border-slate-850 rounded-lg animate-fadeIn">
+              <div className="space-y-3 p-3 bg-black/40 border border-slate-800 rounded-lg transition-all duration-300">
                 <div className="flex items-center gap-1.5 text-xs text-white font-bold">
                   <Crosshair size={12} className="text-red-400" />
                   <span>{selectedAnomaly.name}</span>
