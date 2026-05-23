@@ -75,6 +75,25 @@ async def run_ghost_cycle():
 app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
 app.include_router(sandbox_router)
 
+import logging
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger("null_pointer_safety")
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request, exc):
+    if isinstance(exc, StarletteHTTPException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    logger.exception("Unhandled backend exception occurred")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "An unexpected error occurred. Integrity action logged."}
+    )
+
 # Enable CORS for frontend interaction
 app.add_middleware(
     CORSMiddleware,

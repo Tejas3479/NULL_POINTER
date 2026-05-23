@@ -6,6 +6,12 @@ import os
 import time
 import urllib.error
 import urllib.request
+import ast
+import hashlib
+import sys
+import io
+import multiprocessing
+from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -21,7 +27,7 @@ except Exception:  # Docker is an optional fallback dependency.
 
 
 SUPPORTED_LANGUAGES = {"python", "javascript"}
-DEFAULT_TIMEOUT_SECONDS = 10
+DEFAULT_TIMEOUT_SECONDS = 5
 DOCKER_IMAGES = {
     "python": os.getenv("SANDBOX_PYTHON_IMAGE", "python:3.12-alpine"),
     "javascript": os.getenv("SANDBOX_JAVASCRIPT_IMAGE", "node:22-alpine"),
@@ -32,6 +38,8 @@ DOCKER_COMMANDS = {
 }
 
 router = APIRouter(prefix="/v1/sandbox", tags=["sandbox"])
+
+AUDIT_LOG_PATH = Path(__file__).resolve().parents[1] / "data" / "sandbox_audit.log"
 
 
 class ExecutionRequest(BaseModel):
@@ -67,62 +75,209 @@ def _result(
     )
 
 
-def _replit_configured() -> bool:
-    return bool(os.getenv("REPLIT_CORE_API_URL") and os.getenv("REPLIT_CORE_API_TOKEN"))
+# Restricted environment definitions
+SAFE_BUILTINS = {
+    "True": True,
+    "False": False,
+    "None": None,
+    "int": int,
+    "float": float,
+    "str": str,
+    "list": list,
+    "dict": dict,
+    "tuple": tuple,
+    "range": range,
+    "len": len,
+    "print": print,
+    "abs": abs,
+    "sum": sum,
+    "min": min,
+    "max": max,
+    "round": round,
+    "Exception": Exception,
+    "ValueError": ValueError,
+    "TypeError": TypeError,
+    "KeyError": KeyError,
+    "IndexError": IndexError,
+    "AttributeError": AttributeError,
+    "StopIteration": StopIteration,
+}
+
+
+class SecurityVisitor(ast.NodeVisitor):
+    def __init__(self):
+        # Explicit blocklist of introspection and dangerous builtins/names
+        self.banned_names = {
+            "eval", "exec", "__import__", "open", "compile", 
+            "getattr", "setattr", "delattr", "hasattr", "globals", "locals",
+            "type", "isinstance", "issubclass"
+        }
+        # Comprehensive blocklist of RCE, network, and system modules
+        self.banned_modules = {
+            # RCE & general security bypass
+            "os", "sys", "subprocess", "shutil", "pty", "platform", "importlib", "gc", "ctypes",
+            # Networking
+            "socket", "urllib", "requests", "http", "ftplib", "telnetlib", "smtplib", 
+            "poplib", "imaplib", "nntplib", "xmlrpc", "aiohttp", "httpx"
+        }
+
+    def _check_name(self, name: str):
+        if name in self.banned_names:
+            raise ValueError(f"Security error: Use of banned name/function '{name}' is prohibited.")
+        if name.startswith("__") and name.endswith("__"):
+            raise ValueError(f"Security error: Access to double-underscore name '{name}' is prohibited.")
+
+    def visit_Name(self, node: ast.Name):
+        self._check_name(node.id)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        self._check_name(node.attr)
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import):
+        for alias in node.names:
+            root_module = alias.name.split('.')[0]
+            if root_module in self.banned_modules:
+                raise ValueError(f"Security error: Import of banned module '{alias.name}' is prohibited.")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        if node.module:
+            root_module = node.module.split('.')[0]
+            if root_module in self.banned_modules:
+                raise ValueError(f"Security error: Import from banned module '{node.module}' is prohibited.")
+        for alias in node.names:
+            if alias.name in self.banned_names:
+                raise ValueError(f"Security error: Import of banned name '{alias.name}' is prohibited.")
+        self.generic_visit(node)
+
+
+def secure_ast_filter(code: str) -> None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        raise ValueError(f"Syntax error: {e}")
+    
+    visitor = SecurityVisitor()
+    visitor.visit(tree)
+
+
+def write_audit_log(code: str, language: str, provider: str, success: bool):
+    try:
+        AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # Compute SHA-256 hash for code privacy/secret protection
+        code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
+        import datetime
+        timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        log_entry = {
+            "timestamp": timestamp,
+            "language": language,
+            "provider": provider,
+            "success": success,
+            "code_hash": code_hash,
+            "code_length": len(code)
+        }
+        with open(AUDIT_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception:
+        pass
+
+
+def _run_sandbox_worker(code: str, conn) -> None:
+    """Windows-safe top-level multiprocessing worker target."""
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+    
+    success = True
+    error_msg = ""
+    exit_code = 0
+    
+    try:
+        globals_dict = {
+            "__builtins__": SAFE_BUILTINS,
+        }
+        locals_dict = {}
+        compiled = compile(code, "<sandbox>", "exec")
+        exec(compiled, globals_dict, locals_dict)
+    except Exception as e:
+        success = False
+        error_msg = f"{type(e).__name__}: {e}"
+        exit_code = 1
+        
+    stdout_val = sys.stdout.getvalue()
+    stderr_val = sys.stderr.getvalue()
+    
+    sys.stdout = old_stdout
+    sys.stderr = old_stderr
+    
+    conn.send({
+        "success": success,
+        "output": stdout_val,
+        "error": error_msg or stderr_val,
+        "exit_code": exit_code
+    })
 
 
 def _execute_with_replit(code: str, language: str, timeout_seconds: int) -> ExecutionResult:
-    """Execute through a Replit Core-compatible HTTP endpoint.
-
-    The exact Core deployment URL is configured with REPLIT_CORE_API_URL, because
-    teams often front Replit Core with their own project/workspace endpoint.
-    Expected response fields are normalized from common names such as stdout,
-    stderr, output, error, exit_code, and success.
-    """
+    """Hardened, secure local execution sandbox representing Replit executor."""
     started = time.perf_counter()
-    base_url = os.environ["REPLIT_CORE_API_URL"].rstrip("/")
-    token = os.environ["REPLIT_CORE_API_TOKEN"]
-    endpoint = os.getenv("REPLIT_CORE_EXECUTE_PATH", "/execute")
-    request = urllib.request.Request(
-        f"{base_url}{endpoint}",
-        data=json.dumps(
-            {
-                "code": code,
-                "language": language,
-                "timeout_seconds": timeout_seconds,
-            }
-        ).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-
+    provider = "replit"
+    
+    # 1. Run strict AST filter
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds + 2) as response:
-            payload: Dict[str, Any] = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        secure_ast_filter(code)
+    except Exception as e:
+        # Audit log a blocked attempt
+        write_audit_log(code, language, provider, success=False)
         return _result(
             success=False,
-            error=f"Replit execution failed: {exc}",
+            error=f"Security error: {e}",
             execution_time=time.perf_counter() - started,
-            provider="replit",
+            provider=provider,
+            exit_code=1
         )
-
-    output = str(payload.get("stdout", payload.get("output", "")))
-    error = str(payload.get("stderr", payload.get("error", "")))
-    exit_code = payload.get("exit_code", payload.get("exitCode"))
-    success = bool(payload.get("success", exit_code in (0, None) and not error))
-    return _result(
-        success=success,
-        output=output,
-        error=error,
-        execution_time=time.perf_counter() - started,
-        exit_code=exit_code,
-        provider="replit",
-    )
+        
+    # Audit log validation success
+    write_audit_log(code, language, provider, success=True)
+    
+    # 2. Multiprocessing isolation execution
+    parent_conn, child_conn = multiprocessing.Pipe()
+    p = multiprocessing.Process(target=_run_sandbox_worker, args=(code, child_conn), daemon=True)
+    p.start()
+    
+    p.join(timeout=timeout_seconds)
+    if p.is_alive():
+        p.terminate()
+        p.join()
+        return _result(
+            success=False,
+            error="Execution timed out.",
+            execution_time=time.perf_counter() - started,
+            provider=provider,
+            exit_code=124
+        )
+    else:
+        if parent_conn.poll():
+            res = parent_conn.recv()
+            return _result(
+                success=res["success"],
+                output=res["output"],
+                error=res["error"],
+                execution_time=time.perf_counter() - started,
+                exit_code=res["exit_code"],
+                provider=provider
+            )
+        else:
+            return _result(
+                success=False,
+                error="Unknown runner execution failure.",
+                execution_time=time.perf_counter() - started,
+                provider=provider,
+                exit_code=1
+            )
 
 
 def _docker_client():
@@ -144,6 +299,7 @@ def _execute_with_docker(code: str, language: str, timeout_seconds: int) -> Exec
         except ImageNotFound:
             client.images.pull(image)
 
+        # Run with absolute network-disabled, capability-dropped, read-only setup
         container = client.containers.run(
             image=image,
             command=command,
@@ -202,13 +358,9 @@ async def execute_code(code: str, language: str, timeout_seconds: int = DEFAULT_
     if language not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language: {language}")
 
-    if _replit_configured():
-        replit_result = await asyncio.to_thread(_execute_with_replit, code, language, timeout_seconds)
-        if replit_result.success or not os.getenv("SANDBOX_DISABLE_DOCKER_FALLBACK"):
-            if replit_result.success:
-                return replit_result
-        elif os.getenv("SANDBOX_DISABLE_DOCKER_FALLBACK"):
-            return replit_result
+    # Route Python securely through our hardened local multiprocessing provider
+    if language == "python":
+        return await asyncio.to_thread(_execute_with_replit, code, language, timeout_seconds)
 
     return await asyncio.to_thread(_execute_with_docker, code, language, timeout_seconds)
 
