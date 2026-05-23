@@ -216,12 +216,21 @@ async def attack_timer():
         await asyncio.sleep(10)
         if active_attack["vulnerability"]:
             # Attack succeeded (player failed to patch)
+            simulation_state["stability"] = max(0, simulation_state["stability"] - 15)
+            world_store.state["stability"] = simulation_state["stability"]
+            
             simulation_state["heat"] = min(100, simulation_state["heat"] + 15)
+            world_store.state["heat"] = simulation_state["heat"]
+            
+            world_store.save()
+            
             await manager.broadcast({
                 "type": "attack_result",
                 "status": "failed",
                 "message": "DEFENSE_BREACHED: Stability dropped by 15%!",
-                "new_heat": simulation_state["heat"]
+                "new_heat": simulation_state["heat"],
+                "new_stability": simulation_state["stability"],
+                "world": world_store.snapshot()
             })
             active_attack["vulnerability"] = None
     except asyncio.CancelledError:
@@ -233,22 +242,58 @@ async def apply_patch(payload: dict):
     if not active_attack["vulnerability"]:
         return {"error": "No active attack to patch."}
     
-    patch_code = payload.get("code") or payload.get("patch") or payload.get("description", "")
-    language = payload.get("language", "python")
+    description = payload.get("description", "")
+    code = payload.get("code", "")
     player_id = payload.get("player_id", "local-player")
     
-    verdict = await world_store.accept_patch(
-        patch_code=patch_code,
-        vulnerability=active_attack["vulnerability"],
-        language=language,
-        player_id=player_id,
-    )
+    if description and not code:
+        from backend.services.world_store import evaluate_patch
+        raw_verdict = evaluate_patch(description, active_attack["vulnerability"])
+        verdict = {
+            "accepted": raw_verdict["accepted"],
+            "score": raw_verdict["score"],
+            "reason": raw_verdict["reason"],
+            "diff": raw_verdict["suggested_diff"],
+            "suggested_diff": raw_verdict["suggested_diff"],
+            "sandbox_trace": {
+                "language": "semantic",
+                "started_at": utc_now(),
+                "syntax": {"success": True, "error": ""},
+                "baseline": None,
+                "patched": None,
+            }
+        }
+    else:
+        patch_code = code or description
+        language = payload.get("language", "python")
+        verdict = await world_store.accept_patch(
+            patch_code=patch_code,
+            vulnerability=active_attack["vulnerability"],
+            language=language,
+            player_id=player_id,
+        )
+        
     if verdict["accepted"]:
         if active_attack["timer_task"]:
             active_attack["timer_task"].cancel()
+            active_attack["timer_task"] = None
         
+        # Restore and reward stability
+        simulation_state["stability"] = min(100, simulation_state["stability"] + 15)
+        world_store.state["stability"] = simulation_state["stability"]
         world_store.append_event("patch_accepted", "Operator patch accepted.", verdict)
+        world_store.save()
+        
         active_attack["vulnerability"] = None
+        
+        await manager.broadcast({
+            "type": "attack_result",
+            "status": "success",
+            "message": f"SYNTAX_SHIELD_ACTIVATED: {verdict['reason']}",
+            "new_stability": simulation_state["stability"],
+            "world": world_store.snapshot(),
+        })
+        
         return {
             "status": "patched",
             "message": f"SYNTAX_SHIELD_ACTIVATED: {verdict['reason']}",
@@ -262,6 +307,42 @@ async def apply_patch(payload: dict):
             "message": f"PATCH_INSUFFICIENT ({verdict['score']}): {verdict['reason']}",
             "verdict": verdict,
         }
+
+@app.post("/v1/simulation/reset")
+async def reset_simulation():
+    """Resets the entire simulation to the base world state, clears active attacks, and broadcasts state updates."""
+    from copy import deepcopy
+    from backend.services.world_store import BASE_WORLD
+    
+    # Reset store state
+    world_store.state = deepcopy(BASE_WORLD)
+    world_store.save()
+    
+    # Reset local active attacks
+    active_attack["vulnerability"] = None
+    if active_attack["timer_task"]:
+        active_attack["timer_task"].cancel()
+        active_attack["timer_task"] = None
+        
+    # Reset local simulation state
+    simulation_state["heat"] = 0.0
+    simulation_state["stability"] = 100
+    simulation_state["status"] = "idle"
+    
+    # Broadcast reset to all WebSocket connections
+    await manager.broadcast({
+        "type": "world_update",
+        "world": world_store.snapshot(),
+        "message": "SIMULATION_REBOOTED: Core reality metrics restored to baseline."
+    })
+    await manager.broadcast({
+        "type": "attack_result",
+        "status": "success",
+        "message": "HARD_RESET: System restored to 100% integrity.",
+        "new_heat": 0.0
+    })
+    
+    return {"status": "reset", "world": world_store.snapshot()}
 
 if __name__ == "__main__":
     import uvicorn

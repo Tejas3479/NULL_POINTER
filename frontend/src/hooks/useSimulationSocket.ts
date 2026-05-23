@@ -99,7 +99,9 @@ export const useSimulationSocket = (url: string) => {
           text: data.message,
           timestamp
         }]);
-        if (data.new_heat) setHeat(data.new_heat);
+        if (data.new_heat !== undefined) setHeat(data.new_heat);
+        if (data.new_stability !== undefined) setStability(data.new_stability);
+        if (data.world) setWorld(data.world);
       } else if (data.type === 'world_update' || data.type === 'agent_spawned') {
         if (data.world) setWorld(data.world);
         if (data.message) {
@@ -180,5 +182,42 @@ export const useSimulationSocket = (url: string) => {
     if (result.world) setWorld(result.world);
   }, [apiBase]);
 
-  return { heat, stability, logs, isConnected, activeAttack, world, sendCommand, updateWorldParameter, spawnAgent };
+  const resetSimulation = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/v1/simulation/reset`, {
+        method: 'POST',
+      });
+      const result = await res.json();
+      if (result.world) setWorld(result.world);
+      setActiveAttack(null);
+      setHeat(0);
+      setStability(100);
+    } catch (e) {
+      console.error("Reset failed", e);
+    }
+  }, [apiBase]);
+
+  const injectEntropy = useCallback(async () => {
+    try {
+      await fetch(`${apiBase}/v1/simulation/attack`, {
+        method: 'POST',
+      });
+    } catch (e) {
+      console.error("Entropy injection failed", e);
+    }
+  }, [apiBase]);
+
+  return { 
+    heat, 
+    stability, 
+    logs, 
+    isConnected, 
+    activeAttack, 
+    world, 
+    sendCommand, 
+    updateWorldParameter, 
+    spawnAgent,
+    resetSimulation,
+    injectEntropy
+  };
 };

@@ -8,7 +8,19 @@ import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
 export default function Dashboard() {
-  const { heat, stability, isConnected, world, updateWorldParameter, spawnAgent } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
+  const { 
+    heat, 
+    stability, 
+    logs,
+    isConnected, 
+    activeAttack,
+    world, 
+    sendCommand,
+    updateWorldParameter, 
+    spawnAgent,
+    resetSimulation,
+    injectEntropy
+  } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
 
   return (
     <main className="p-6 max-w-[1800px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden">
@@ -34,7 +46,13 @@ export default function Dashboard() {
 
       {/* Main Grid Content */}
       <div className="col-span-12 xl:col-span-7 flex flex-col gap-6 overflow-hidden h-full">
-        <DebuggerCore />
+        <DebuggerCore 
+          stability={stability}
+          logs={logs}
+          isConnected={isConnected}
+          activeAttack={activeAttack}
+          sendCommand={sendCommand}
+        />
       </div>
 
       {/* Sidebar Controls */}
@@ -85,9 +103,9 @@ export default function Dashboard() {
           </div>
           
           <div className="space-y-4 flex-1">
-             <ControlButton label="Initialize Loop" active />
-             <ControlButton label="Inject Entropy" />
-             <ControlButton label="Hard Reset" destructive />
+             <ControlButton label="Initialize Loop" active onClick={resetSimulation} />
+             <ControlButton label="Inject Entropy" onClick={injectEntropy} />
+             <ControlButton label="Hard Reset" destructive onClick={resetSimulation} />
           </div>
         </div>
       </aside>
@@ -107,14 +125,27 @@ function StatBox({ icon, label, value, color }: { icon: React.ReactNode, label: 
   );
 }
 
-function ControlButton({ label, active, destructive }: { label: string, active?: boolean, destructive?: boolean }) {
+function ControlButton({ 
+  label, 
+  active, 
+  destructive, 
+  onClick 
+}: { 
+  label: string; 
+  active?: boolean; 
+  destructive?: boolean; 
+  onClick?: () => void; 
+}) {
   return (
-    <button className={`
-      w-full py-3 px-4 rounded border font-orbitron text-[10px] font-bold uppercase tracking-[0.2em] transition-all
-      ${active ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 
-        destructive ? 'bg-red-500/5 border-red-500/20 text-red-500/50 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50' :
-        'bg-slate-900/50 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-slate-300'}
-    `}>
+    <button 
+      onClick={onClick}
+      className={`
+        w-full py-3 px-4 rounded border font-orbitron text-[10px] font-bold uppercase tracking-[0.2em] transition-all cursor-pointer
+        ${active ? 'bg-blue-500/10 border-blue-500/50 text-blue-400 hover:bg-blue-500/20' : 
+          destructive ? 'bg-red-500/5 border-red-500/20 text-red-500/50 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/50' :
+          'bg-slate-900/50 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-slate-300'}
+      `}
+    >
       {label}
     </button>
   );

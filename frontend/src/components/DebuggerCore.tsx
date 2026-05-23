@@ -2,16 +2,31 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, AlertTriangle, ShieldAlert, Zap } from 'lucide-react';
-import { useSimulationSocket } from '@/hooks/useSimulationSocket';
+import { Send, AlertTriangle, ShieldAlert, Zap, ShieldCheck } from 'lucide-react';
+import { LogEntry, ActiveAttack } from '@/hooks/useSimulationSocket';
 import { GlitchText } from '@/components/GlitchText';
 import { useCyberVoice } from '@/hooks/useCyberVoice';
 import { NeuralNet } from '@/components/NeuralNet';
 
-export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: number) => void }) => {
-  const { stability, logs, isConnected, activeAttack, sendCommand } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
+export const DebuggerCore = ({ 
+  stability, 
+  logs, 
+  isConnected, 
+  activeAttack, 
+  sendCommand,
+  onStabilityChange 
+}: { 
+  stability: number;
+  logs: LogEntry[];
+  isConnected: boolean;
+  activeAttack: ActiveAttack | null;
+  sendCommand: (command: string) => Promise<void>;
+  onStabilityChange?: (s: number) => void;
+}) => {
   const { speak } = useCyberVoice();
   const [input, setInput] = useState('');
+  const [patchInput, setPatchInput] = useState('');
+  const [isPatching, setIsPatching] = useState(false);
   const [isGlitching, setIsGlitching] = useState(false);
   const [now, setNow] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -43,10 +58,13 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
 
   useEffect(() => {
     if (activeAttack) {
+      setNow(Date.now()); // Set now immediately to prevent visual jumps
       const timer = setInterval(() => {
         setNow(Date.now());
       }, 1000);
       return () => clearInterval(timer);
+    } else {
+      setNow(0);
     }
   }, [activeAttack]);
 
@@ -127,7 +145,7 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
-              className="absolute inset-x-4 top-14 bottom-20 z-30 bg-red-950/90 border-2 border-red-500 p-6 flex flex-col gap-4 backdrop-blur-md shadow-[0_0_50px_rgba(239,68,68,0.3)]"
+              className="absolute inset-x-4 top-14 bottom-20 z-30 bg-red-950/90 border-2 border-red-500 p-6 flex flex-col gap-4 backdrop-blur-md shadow-[0_0_50px_rgba(239,68,68,0.3)] rounded"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3 text-red-500">
@@ -146,13 +164,48 @@ export const DebuggerCore = ({ onStabilityChange }: { onStabilityChange?: (s: nu
                 </div>
               </div>
 
+              {/* Quick Patch Form inside Overlay */}
+              <form 
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!patchInput.trim() || isPatching) return;
+                  setIsPatching(true);
+                  await sendCommand(`patch ${patchInput}`);
+                  setPatchInput('');
+                  setIsPatching(false);
+                }}
+                className="flex flex-col gap-3 border border-red-500/30 p-4 bg-black/60 rounded"
+              >
+                <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider">
+                  System Vulnerability Mitigation Form
+                </div>
+                <div className="flex gap-3">
+                  <input
+                    type="text"
+                    value={patchInput}
+                    onChange={(e) => setPatchInput(e.target.value)}
+                    className="flex-1 bg-black/50 border border-red-500/40 text-red-100 placeholder:text-red-900/60 font-mono text-xs p-2.5 rounded focus:outline-none focus:border-red-500"
+                    placeholder="DESCRIBE WHY THIS LOGIC IS INTEGRAL TO PREVENT AN ANOMALY BREACH..."
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={isPatching}
+                    className="bg-red-950 border border-red-500 text-red-400 hover:bg-red-500 hover:text-black font-orbitron text-[10px] font-black uppercase px-4 rounded tracking-wider transition-all duration-300 flex items-center gap-1.5 cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.2)]"
+                  >
+                    <ShieldCheck size={14} className={isPatching ? "animate-spin" : ""} />
+                    DEPLOY SHIELD
+                  </button>
+                </div>
+              </form>
+
               <div className="mt-auto flex flex-col gap-2">
                 <div className="flex items-center gap-2 text-[10px] text-red-400 font-bold uppercase tracking-widest">
                   <Zap size={10} />
                   <span>Ghost is attempting to purge this logic</span>
                 </div>
                 <div className="text-[10px] text-white/50 leading-tight">
-                  Type <span className="text-red-400 font-bold underline">patch [description]</span> in the command line to reinforce the code.
+                  Type <span className="text-red-400 font-bold underline">patch [description]</span> in the command line or use the form above to reinforce the code.
                 </div>
               </div>
             </motion.div>
