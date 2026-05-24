@@ -58,8 +58,9 @@ export default function LoginPage() {
       
       // Redirect cleanly to dashboard
       window.location.href = '/';
-    } catch (e: any) {
-      setError(e.message || 'Mock login failed. Verify backend is running.');
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      setError(errorMessage || 'Mock login failed. Verify backend is running.');
       setLoading(false);
     }
   };
@@ -142,7 +143,7 @@ export default function LoginPage() {
               <label className="block text-[10px] text-[#00FF41]/75 mb-1">SELECT SECURITY ACCESS ROLE:</label>
               <select
                 value={mockRole}
-                onChange={(e) => setMockRole(e.target.value as any)}
+                onChange={(e) => setMockRole(e.target.value as 'admin' | 'developer' | 'viewer')}
                 className="w-full bg-black border border-[#00FF41]/40 text-[#00FF41] font-mono text-xs p-3 rounded outline-none focus:border-[#00FF41] cursor-pointer"
               >
                 <option value="admin">ADMINISTRATOR (Full Integrity & God Mode Access)</option>

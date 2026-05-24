@@ -58,13 +58,21 @@ export const DebuggerCore = ({
 
   useEffect(() => {
     if (activeAttack) {
-      setNow(Date.now()); // Set now immediately to prevent visual jumps
+      const initialTimer = setTimeout(() => {
+        setNow(Date.now());
+      }, 0);
       const timer = setInterval(() => {
         setNow(Date.now());
       }, 1000);
-      return () => clearInterval(timer);
+      return () => {
+        clearTimeout(initialTimer);
+        clearInterval(timer);
+      };
     } else {
-      setNow(0);
+      const initialTimer = setTimeout(() => {
+        setNow(0);
+      }, 0);
+      return () => clearTimeout(initialTimer);
     }
   }, [activeAttack]);
 
