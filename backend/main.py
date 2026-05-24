@@ -10,8 +10,10 @@ from backend.services.world_store import world_store
 from backend.auth.oauth2 import get_current_user, require_role, create_session_token, verify_external_jwt, SESSION_COOKIE_NAME
 from backend.models.user import User, UserRole
 from backend.services.user_store import user_store
-from pydantic import BaseModel
-from typing import Literal
+from pydantic import BaseModel, Field, model_validator
+from typing import Literal, Any, Optional, Dict
+import re
+import secrets
 from dotenv import load_dotenv
 import os
 import json
@@ -81,10 +83,36 @@ app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
 app.include_router(sandbox_router, dependencies=[Depends(get_current_user)])
 
 import logging
+import hashlib
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+class CodeMaskingFilter(logging.Filter):
+    def filter(self, record):
+        if isinstance(record.msg, str):
+            record.msg = self.mask_text(record.msg)
+        if record.args:
+            new_args = []
+            for arg in record.args:
+                if isinstance(arg, str):
+                    new_args.append(self.mask_text(arg))
+                else:
+                    new_args.append(arg)
+            record.args = tuple(new_args)
+        return True
+
+    def mask_text(self, text: str) -> str:
+        if len(text) > 200:
+            text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            return f"{text[:100]}... [TRUNCATED & MASKED FOR SECURITY, len={len(text)}, sha256={text_hash}] ...{text[-50:]}"
+        return text
+
 logger = logging.getLogger("null_pointer_safety")
+safe_filter = CodeMaskingFilter()
+logger.addFilter(safe_filter)
+logging.getLogger("uvicorn").addFilter(safe_filter)
+logging.getLogger("uvicorn.access").addFilter(safe_filter)
+logging.getLogger().addFilter(safe_filter)
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request, exc):
@@ -122,6 +150,53 @@ cookie_kwargs = {
 class LoginRequest(BaseModel):
     code: str
     provider: Literal["github", "google"]
+
+class SafeBaseModel(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def sanitize_strings(cls, data: Any) -> Any:
+        # Load string limit configuration from environment, with safe defaults
+        max_name = int(os.getenv("MAX_NAME_LENGTH", "200"))
+        max_text = int(os.getenv("MAX_TEXT_LENGTH", "50000"))
+        max_code = int(os.getenv("MAX_CODE_LENGTH", "1048576")) # 1 MB default
+        
+        if isinstance(data, dict):
+            new_data = {}
+            for k, v in data.items():
+                if isinstance(v, str):
+                    clean_v = v
+                    # Apply HTML stripping ONLY to plain-text fields (NOT code or language fields)
+                    if k not in ("code", "language"):
+                        clean_v = re.sub(r'<[^>]*>', '', v)
+                    
+                    # Apply length limits contextually
+                    if k == "name":
+                        limit = max_name
+                    elif k == "code":
+                        limit = max_code
+                    else:
+                        limit = max_text
+                        
+                    if len(clean_v) > limit:
+                        clean_v = clean_v[:limit]
+                    new_data[k] = clean_v
+                else:
+                    new_data[k] = v
+            return new_data
+        return data
+
+class SpawnAgentRequest(SafeBaseModel):
+    archetype_id: str
+    name: Optional[str] = None
+
+class UpdateWorldParametersRequest(SafeBaseModel):
+    parameters: dict
+
+class ApplyPatchRequest(SafeBaseModel):
+    description: Optional[str] = ""
+    code: Optional[str] = ""
+    player_id: Optional[str] = "local-player"
+    language: Optional[str] = "python"
 
 @app.post("/auth/login")
 async def mock_login(payload: LoginRequest, response: Response):
@@ -171,8 +246,17 @@ async def mock_login(payload: LoginRequest, response: Response):
     # Sign session token
     session_jwt = create_session_token(user_record["username"], user_record["role"])
     
-    # Set session cookie
+    # Set session cookie and generate/set non-httpOnly CSRF cookie for Double-Submit pattern
     response.set_cookie(value=session_jwt, **cookie_kwargs)
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     
     return {
         "status": "success",
@@ -237,6 +321,15 @@ async def github_callback(code: str, response: Response):
     # Set session cookie and redirect browser back to frontend dashboard
     redirect_res = RedirectResponse(url=FRONTEND_URL)
     redirect_res.set_cookie(value=session_jwt, **cookie_kwargs)
+    csrf_token = secrets.token_urlsafe(32)
+    redirect_res.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     return redirect_res
 
 @app.get("/auth/callback/google")
@@ -289,6 +382,15 @@ async def google_callback(code: str, response: Response):
     # Set session cookie and redirect browser back to frontend dashboard
     redirect_res = RedirectResponse(url=FRONTEND_URL)
     redirect_res.set_cookie(value=session_jwt, **cookie_kwargs)
+    csrf_token = secrets.token_urlsafe(32)
+    redirect_res.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     return redirect_res
 
 @app.post("/auth/logout")
@@ -296,6 +398,12 @@ async def logout(response: Response):
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         httponly=True,
+        samesite="lax",
+        secure=cookie_kwargs["secure"]
+    )
+    response.delete_cookie(
+        key="csrf_token",
+        httponly=False,
         samesite="lax",
         secure=cookie_kwargs["secure"]
     )
@@ -334,14 +442,14 @@ async def get_world(current_user: User = Depends(get_current_user)):
     return world_store.snapshot()
 
 @app.post("/v1/simulation/world/parameters")
-async def update_world_parameters(payload: dict, current_user: User = Depends(require_role(["admin"]))):
-    world = world_store.update_parameters(payload.get("parameters", payload))
+async def update_world_parameters(payload: UpdateWorldParametersRequest, current_user: User = Depends(require_role(["admin"]))):
+    world = world_store.update_parameters(payload.parameters)
     await manager.broadcast({"type": "world_update", "world": world})
     return world
 
 @app.post("/v1/simulation/agents/spawn")
-async def spawn_agent(payload: dict, current_user: User = Depends(get_current_user)):
-    agent = world_store.spawn_agent(payload.get("archetype_id", ""), payload.get("name"))
+async def spawn_agent(payload: SpawnAgentRequest, current_user: User = Depends(get_current_user)):
+    agent = world_store.spawn_agent(payload.archetype_id, payload.name)
     world = world_store.snapshot()
     await manager.broadcast({
         "type": "agent_spawned",
@@ -471,14 +579,14 @@ async def attack_timer():
         pass
 
 @app.post("/v1/simulation/patch")
-async def apply_patch(payload: dict, current_user: User = Depends(get_current_user)):
+async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(get_current_user)):
     """Player attempts to 'reinforce' the code with a semantic description."""
     if not active_attack["vulnerability"]:
         return {"error": "No active attack to patch."}
     
-    description = payload.get("description", "")
-    code = payload.get("code", "")
-    player_id = payload.get("player_id", "local-player")
+    description = payload.description
+    code = payload.code
+    player_id = payload.player_id
     
     if description and not code:
         from backend.services.world_store import evaluate_patch, utc_now
@@ -499,7 +607,7 @@ async def apply_patch(payload: dict, current_user: User = Depends(get_current_us
         }
     else:
         patch_code = code or description
-        language = payload.get("language", "python")
+        language = payload.language or "python"
         verdict = await world_store.accept_patch(
             patch_code=patch_code,
             vulnerability=active_attack["vulnerability"],

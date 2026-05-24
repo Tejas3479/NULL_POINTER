@@ -29,6 +29,12 @@ export interface SimulationWorld {
   events: Array<{ id: string; kind: string; message: string; tick: number; created_at: string }>;
 }
 
+const getCsrfToken = (): string => {
+  if (typeof document === 'undefined') return '1';
+  const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]*)'));
+  return match ? decodeURIComponent(match[2]) : '1';
+};
+
 export const useSimulationSocket = (url: string) => {
   const apiBase = useMemo(() => url.replace(/^ws/, 'http').replace(/\/ws\/heat$/, ''), [url]);
   const [heat, setHeat] = useState(100);
@@ -132,7 +138,7 @@ export const useSimulationSocket = (url: string) => {
             credentials: 'include',
             headers: { 
               'Content-Type': 'application/json',
-              'X-CSRF-Token': '1'
+              'X-CSRF-Token': getCsrfToken()
             },
             body: JSON.stringify({ description })
           });
@@ -174,7 +180,7 @@ export const useSimulationSocket = (url: string) => {
       credentials: 'include',
       headers: { 
         'Content-Type': 'application/json',
-        'X-CSRF-Token': '1'
+        'X-CSRF-Token': getCsrfToken()
       },
       body: JSON.stringify({ parameters: { [key]: value } })
     });
@@ -188,7 +194,7 @@ export const useSimulationSocket = (url: string) => {
       credentials: 'include',
       headers: { 
         'Content-Type': 'application/json',
-        'X-CSRF-Token': '1'
+        'X-CSRF-Token': getCsrfToken()
       },
       body: JSON.stringify({ archetype_id: archetypeId })
     });
@@ -202,7 +208,7 @@ export const useSimulationSocket = (url: string) => {
         method: 'POST',
         credentials: 'include',
         headers: { 
-          'X-CSRF-Token': '1'
+          'X-CSRF-Token': getCsrfToken()
         }
       });
       const result = await res.json();
@@ -221,7 +227,7 @@ export const useSimulationSocket = (url: string) => {
         method: 'POST',
         credentials: 'include',
         headers: { 
-          'X-CSRF-Token': '1'
+          'X-CSRF-Token': getCsrfToken()
         }
       });
     } catch (e) {

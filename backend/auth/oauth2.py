@@ -110,13 +110,14 @@ async def get_current_user(
             detail="Authentication credentials were not provided."
         )
         
-    # CSRF Verification on State-Changing Methods
+    # CSRF Verification on State-Changing Methods (Double-Submit Cookie Pattern)
     if request.method not in ("GET", "HEAD", "OPTIONS"):
-        csrf_token = request.headers.get("X-CSRF-Token")
-        if not csrf_token:
+        csrf_header = request.headers.get("X-CSRF-Token")
+        csrf_cookie = request.cookies.get("csrf_token")
+        if not csrf_header or not csrf_cookie or csrf_header != csrf_cookie:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: CSRF protection triggered. Missing 'X-CSRF-Token' header."
+                detail="Forbidden: CSRF protection triggered. Mismatched or missing 'csrf_token' (Double-Submit validation failed)."
             )
             
     try:

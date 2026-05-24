@@ -16,6 +16,11 @@ Return only 'ACCEPTED' or 'REJECTED: [feedback]'."""
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0.8) if os.getenv("OPENAI_API_KEY") else None
 
+def sanitize_prompt_input(text: str) -> str:
+    if not isinstance(text, str):
+        return text
+    return text.replace("{", "{{").replace("}", "}}")
+
 def specialist_node(state: SimState):
     agent = state.get("selected_agent") or world_store.choose_agent()
     archetype = world_store.archetype_for(agent["archetype_id"])
@@ -23,15 +28,25 @@ def specialist_node(state: SimState):
     memory = "\n".join(agent.get("memory", [])[-5:])
     factions = ", ".join(f"{f['name']}:{f['influence']}" for f in world["factions"])
     anomalies = ", ".join(f"{a['name']}:{a['severity']}" for a in world["anomalies"])
-    prompt = f"""You are {agent['name']}, an evolvable NULL_POINTER agent.
-Role: {archetype['role']}
-Temperament: {archetype['temperament']}
-Prime directive: {archetype['prompt']}
+    
+    # Context-aware sanitization of non-code dynamic strings to prevent prompt injection
+    sanitized_agent_name = sanitize_prompt_input(agent.get("name", ""))
+    sanitized_role = sanitize_prompt_input(archetype.get("role", ""))
+    sanitized_temperament = sanitize_prompt_input(archetype.get("temperament", ""))
+    sanitized_archetype_prompt = sanitize_prompt_input(archetype.get("prompt", ""))
+    sanitized_memory = sanitize_prompt_input(memory)
+    sanitized_factions = sanitize_prompt_input(factions)
+    sanitized_anomalies = sanitize_prompt_input(anomalies)
+    
+    prompt = f"""You are {sanitized_agent_name}, an evolvable NULL_POINTER agent.
+Role: {sanitized_role}
+Temperament: {sanitized_temperament}
+Prime directive: {sanitized_archetype_prompt}
 Persistent memory:
-{memory}
+{sanitized_memory}
 
-Current factions: {factions}
-Active anomalies: {anomalies}
+Current factions: {sanitized_factions}
+Active anomalies: {sanitized_anomalies}
 
 Propose one reality patch that changes the persistent simulation. Include the target subsystem and expected consequence."""
     if llm:
