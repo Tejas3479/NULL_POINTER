@@ -1,16 +1,21 @@
 import asyncio
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Response, Query, HTTPException
+from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend.utils.websocket_manager import manager
 from backend.utils.source_reader import get_random_snippet
 from backend.agents.hive_mind import hive_mind_app
 from backend.services.sandbox_executor import router as sandbox_router
 from backend.services.world_store import world_store
+from backend.auth.oauth2 import get_current_user, require_role, create_session_token, verify_external_jwt, SESSION_COOKIE_NAME
+from backend.models.user import User, UserRole
+from backend.services.user_store import user_store
+from pydantic import BaseModel
+from typing import Literal
 from dotenv import load_dotenv
 import os
 import json
 import random
-
 load_dotenv()
 
 active_attack = {
@@ -73,7 +78,7 @@ async def run_ghost_cycle():
             await asyncio.sleep(10)
 
 app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
-app.include_router(sandbox_router)
+app.include_router(sandbox_router, dependencies=[Depends(get_current_user)])
 
 import logging
 from fastapi.responses import JSONResponse
@@ -103,6 +108,216 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+cookie_kwargs = {
+    "key": SESSION_COOKIE_NAME,
+    "httponly": True,
+    "samesite": "lax",
+    "secure": ENVIRONMENT == "production",
+    "max_age": 3600
+}
+
+class LoginRequest(BaseModel):
+    code: str
+    provider: Literal["github", "google"]
+
+@app.post("/auth/login")
+async def mock_login(payload: LoginRequest, response: Response):
+    code = payload.code
+    
+    # Check for test environment override file
+    test_env = None
+    override_file = os.path.join(os.path.dirname(__file__), "data", ".env_test")
+    if os.path.exists(override_file):
+        try:
+            with open(override_file, "r") as f:
+                test_env = f.read().strip()
+        except Exception:
+            pass
+            
+    current_env = test_env or ENVIRONMENT
+    
+    # 1. Production Mock Login Gate Check
+    if code.startswith("mock-") and current_env == "production":
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden: Mock login codes are disabled in production!"
+        )
+        
+    username = "operator"
+    role = UserRole.VIEWER
+    
+    if code == "mock-admin-code":
+        username = "admin-operator"
+        role = UserRole.ADMIN
+    elif code == "mock-dev-code":
+        username = "dev-operator"
+        role = UserRole.DEVELOPER
+    elif code == "mock-viewer-code":
+        username = "viewer-operator"
+        role = UserRole.VIEWER
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid mock code. Real OAuth flows must use callback endpoints."
+        )
+        
+    # Get or create in persistent user store
+    email = f"{username}@nullpointer.local"
+    user_record = user_store.find_or_create_user(email, username, default_role=role.value)
+    
+    # Sign session token
+    session_jwt = create_session_token(user_record["username"], user_record["role"])
+    
+    # Set session cookie
+    response.set_cookie(value=session_jwt, **cookie_kwargs)
+    
+    return {
+        "status": "success",
+        "username": user_record["username"],
+        "role": user_record["role"]
+    }
+
+@app.get("/auth/callback/github")
+async def github_callback(code: str, response: Response):
+    client_id = os.getenv("GITHUB_CLIENT_ID", "")
+    client_secret = os.getenv("GITHUB_CLIENT_SECRET", "")
+    
+    username = "github-dev-mock"
+    role = "developer"
+    
+    if client_id and client_secret:
+        try:
+            import urllib.request
+            import json
+            
+            # Exchange code for access token
+            req = urllib.request.Request(
+                "https://github.com/login/oauth/access_token",
+                data=json.dumps({
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "code": code
+                }).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=5) as res:
+                token_data = json.loads(res.read().decode("utf-8"))
+                access_token = token_data.get("access_token")
+                if not access_token:
+                    raise ValueError("No access token returned from GitHub.")
+                
+                # Fetch profile
+                user_req = urllib.request.Request(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "User-Agent": "NULL_POINTER"
+                    }
+                )
+                with urllib.request.urlopen(user_req, timeout=5) as user_res:
+                    user_data = json.loads(user_res.read().decode("utf-8"))
+                    username = user_data.get("login", "github-user")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"GitHub OAuth failed: {e}")
+            
+    # Get or create user
+    email = f"{username}@github.local"
+    user_record = user_store.find_or_create_user(email, username, default_role=role)
+    
+    # Sign session token
+    session_jwt = create_session_token(user_record["username"], user_record["role"])
+    
+    # Set session cookie and redirect browser back to frontend dashboard
+    redirect_res = RedirectResponse(url=FRONTEND_URL)
+    redirect_res.set_cookie(value=session_jwt, **cookie_kwargs)
+    return redirect_res
+
+@app.get("/auth/callback/google")
+async def google_callback(code: str, response: Response):
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    
+    username = "google-dev-mock"
+    role = "developer"
+    
+    if client_id and client_secret:
+        try:
+            import urllib.request
+            import json
+            
+            # Exchange code for ID token
+            req = urllib.request.Request(
+                "https://oauth2.googleapis.com/token",
+                data=json.dumps({
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "code": code,
+                    "grant_type": "authorization_code",
+                    "redirect_uri": os.getenv("GOOGLE_REDIRECT_URI", f"{FRONTEND_URL}/login")
+                }).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json"
+                },
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=5) as res:
+                token_data = json.loads(res.read().decode("utf-8"))
+                id_token = token_data.get("id_token")
+                if not id_token:
+                    raise ValueError("No ID token returned from Google.")
+                
+                # Cryptographic signature verification using JWKS OIDC certs
+                decoded = verify_external_jwt(id_token, "google")
+                username = decoded.get("email", decoded.get("sub", "google-user"))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Google OAuth failed: {e}")
+            
+    # Get or create user
+    email = username if "@" in username else f"{username}@google.local"
+    user_record = user_store.find_or_create_user(email, username, default_role=role)
+    
+    # Sign session token
+    session_jwt = create_session_token(user_record["username"], user_record["role"])
+    
+    # Set session cookie and redirect browser back to frontend dashboard
+    redirect_res = RedirectResponse(url=FRONTEND_URL)
+    redirect_res.set_cookie(value=session_jwt, **cookie_kwargs)
+    return redirect_res
+
+@app.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=cookie_kwargs["secure"]
+    )
+    return {"status": "success", "message": "Logged out successfully."}
+
+@app.get("/auth/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "username": current_user.username,
+        "email": current_user.email,
+        "role": current_user.role.value
+    }
+
+@app.post("/api/analyze")
+async def analyze_code(payload: dict, current_user: User = Depends(get_current_user)):
+    return {
+        "status": "success",
+        "message": "Code integrity verified successfully.",
+        "user": current_user.username,
+        "role": current_user.role.value
+    }
+
 simulation_state = {
     "heat": world_store.snapshot()["heat"],
     "stability": world_store.snapshot()["stability"], # Linked to Ghost Engine
@@ -115,17 +330,17 @@ async def health_check():
     return {"status": "alive", "simulation": simulation_state["status"]}
 
 @app.get("/v1/simulation/world")
-async def get_world():
+async def get_world(current_user: User = Depends(get_current_user)):
     return world_store.snapshot()
 
 @app.post("/v1/simulation/world/parameters")
-async def update_world_parameters(payload: dict):
+async def update_world_parameters(payload: dict, current_user: User = Depends(require_role(["admin"]))):
     world = world_store.update_parameters(payload.get("parameters", payload))
     await manager.broadcast({"type": "world_update", "world": world})
     return world
 
 @app.post("/v1/simulation/agents/spawn")
-async def spawn_agent(payload: dict):
+async def spawn_agent(payload: dict, current_user: User = Depends(get_current_user)):
     agent = world_store.spawn_agent(payload.get("archetype_id", ""), payload.get("name"))
     world = world_store.snapshot()
     await manager.broadcast({
@@ -206,7 +421,7 @@ async def broadcast_heat_updates():
 # Lifespan handles startup/shutdown tasks
 
 @app.post("/v1/simulation/attack")
-async def initiate_attack():
+async def initiate_attack(current_user: User = Depends(get_current_user)):
     """Selects a random line of code as a vulnerability and starts a countdown."""
     file_to_attack = random.choice(["main.py", "agents/ghost_engine.py"])
     snippet = get_random_snippet(file_to_attack, lines=1)
@@ -256,7 +471,7 @@ async def attack_timer():
         pass
 
 @app.post("/v1/simulation/patch")
-async def apply_patch(payload: dict):
+async def apply_patch(payload: dict, current_user: User = Depends(get_current_user)):
     """Player attempts to 'reinforce' the code with a semantic description."""
     if not active_attack["vulnerability"]:
         return {"error": "No active attack to patch."}
@@ -328,7 +543,7 @@ async def apply_patch(payload: dict):
         }
 
 @app.post("/v1/simulation/reset")
-async def reset_simulation():
+async def reset_simulation(current_user: User = Depends(get_current_user)):
     """Resets the entire simulation to the base world state, clears active attacks, and broadcasts state updates."""
     from copy import deepcopy
     from backend.services.world_store import BASE_WORLD

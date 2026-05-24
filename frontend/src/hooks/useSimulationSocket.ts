@@ -40,8 +40,11 @@ export const useSimulationSocket = (url: string) => {
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    fetch(`${apiBase}/v1/simulation/world`)
-      .then((res) => res.json())
+    fetch(`${apiBase}/v1/simulation/world`, { credentials: 'include' })
+      .then((res) => {
+        if (!res.ok) throw new Error("Unauthorized");
+        return res.json();
+      })
       .then((data) => {
         setWorld(data);
         setHeat(data.heat ?? 100);
@@ -126,7 +129,11 @@ export const useSimulationSocket = (url: string) => {
         try {
           const res = await fetch(`${apiBase}/v1/simulation/patch`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            headers: { 
+              'Content-Type': 'application/json',
+              'X-CSRF-Token': '1'
+            },
             body: JSON.stringify({ description })
           });
           const result = await res.json();
@@ -164,7 +171,11 @@ export const useSimulationSocket = (url: string) => {
   const updateWorldParameter = useCallback(async (key: string, value: number) => {
     const res = await fetch(`${apiBase}/v1/simulation/world/parameters`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': '1'
+      },
       body: JSON.stringify({ parameters: { [key]: value } })
     });
     const result = await res.json();
@@ -174,7 +185,11 @@ export const useSimulationSocket = (url: string) => {
   const spawnAgent = useCallback(async (archetypeId: string) => {
     const res = await fetch(`${apiBase}/v1/simulation/agents/spawn`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': '1'
+      },
       body: JSON.stringify({ archetype_id: archetypeId })
     });
     const result = await res.json();
@@ -185,6 +200,10 @@ export const useSimulationSocket = (url: string) => {
     try {
       const res = await fetch(`${apiBase}/v1/simulation/reset`, {
         method: 'POST',
+        credentials: 'include',
+        headers: { 
+          'X-CSRF-Token': '1'
+        }
       });
       const result = await res.json();
       if (result.world) setWorld(result.world);
@@ -200,6 +219,10 @@ export const useSimulationSocket = (url: string) => {
     try {
       await fetch(`${apiBase}/v1/simulation/attack`, {
         method: 'POST',
+        credentials: 'include',
+        headers: { 
+          'X-CSRF-Token': '1'
+        }
       });
     } catch (e) {
       console.error("Entropy injection failed", e);

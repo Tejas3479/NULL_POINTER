@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
-import { Activity, GitBranch, RadioTower, Sparkles, Crosshair } from 'lucide-react';
+import { Activity, GitBranch, RadioTower, Sparkles, Crosshair, Lock } from 'lucide-react';
 import { SimulationWorld } from '@/hooks/useSimulationSocket';
 
 const factionColors: Record<string, string> = {
@@ -82,10 +82,12 @@ function Hotspots({ world, selectedAnomalyId, onAnomalyClick }: HotspotsProps) {
 
 export function SimulationWorldMap({
   world,
+  userRole,
   onParameterChange,
   onSpawnAgent,
 }: {
   world: SimulationWorld | null;
+  userRole: string | null;
   onParameterChange: (key: string, value: number) => void;
   onSpawnAgent: (archetypeId: string) => void;
 }) {
@@ -277,9 +279,16 @@ export function SimulationWorldMap({
               </div>
             ) : (
               /* God Mode Sliders */
-              <div className="space-y-3">
+              <div className="space-y-3 relative">
+                {userRole !== 'admin' && (
+                  <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center border border-red-500/20 rounded p-4 text-center">
+                    <Lock className="text-red-500 animate-pulse mb-1" size={18} />
+                    <span className="text-[9px] uppercase font-orbitron font-black text-white tracking-widest">HOLOGRAPHIC LOCK ACTIVE</span>
+                    <span className="text-[7px] uppercase text-slate-500 mt-0.5 tracking-wider">ADMIN PRIVILEGES REQUIRED TO EDIT CORE REALITY</span>
+                  </div>
+                )}
                 {Object.entries(world.parameters).map(([key, value]) => (
-                  <label key={key} className="block">
+                  <label key={key} className={`block ${userRole !== 'admin' ? 'opacity-30' : ''}`}>
                     <div className="flex justify-between text-[10px] uppercase text-slate-400 mb-1">
                       <span>{key.replaceAll('_', ' ')}</span>
                       <span>{value.toFixed(2)}</span>
@@ -290,8 +299,9 @@ export function SimulationWorldMap({
                       max={1}
                       step={0.05}
                       value={value}
+                      disabled={userRole !== 'admin'}
                       onChange={(event) => onParameterChange(key, Number(event.target.value))}
-                      className="w-full accent-cyan-400 cursor-ew-resize h-1.5 bg-slate-900 rounded-full appearance-none"
+                      className="w-full accent-cyan-400 cursor-ew-resize h-1.5 bg-slate-900 rounded-full appearance-none disabled:cursor-not-allowed"
                     />
                   </label>
                 ))}

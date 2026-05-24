@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { Activity, Flame, Shield, Cpu, RadioTower } from 'lucide-react';
@@ -8,6 +8,31 @@ import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
 export default function Dashboard() {
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    // 1. Verify session persistence on mount using httpOnly cookie
+    fetch('http://localhost:8000/auth/me', { 
+      credentials: 'include' 
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Unauthorized');
+        return res.json();
+      })
+      .then((data) => {
+        setUserRole(data.role);
+        setUsername(data.username);
+        setLoadingAuth(false);
+      })
+      .catch(() => {
+        // Not authenticated, clear session flags and redirect to /login
+        sessionStorage.removeItem('is_authenticated');
+        window.location.href = '/login';
+      });
+  }, []);
+
   const { 
     heat, 
     stability, 
@@ -21,6 +46,19 @@ export default function Dashboard() {
     resetSimulation,
     injectEntropy
   } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
+
+  if (loadingAuth) {
+    return (
+      <main className="min-h-screen bg-black text-[#00FF41] font-mono flex items-center justify-center p-6 relative overflow-hidden">
+        {/* CRT Overlay */}
+        <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-40 mix-blend-overlay" />
+        <div className="text-center space-y-4 relative z-10">
+          <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin mx-auto" />
+          <p className="text-xs uppercase tracking-widest text-[#00FF41]/60 font-bold">Verifying quantum defense authorization keys...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="p-6 max-w-[1800px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden">
@@ -38,9 +76,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="flex gap-8">
+        <div className="flex gap-8 items-center">
+          <div className="text-right border-r border-slate-800 pr-6 mr-2">
+            <span className="text-[9px] uppercase tracking-widest text-slate-500 block font-bold">OPERATOR: {username}</span>
+            <span className={`text-[9px] uppercase font-black font-orbitron tracking-wider ${userRole === 'admin' ? 'text-red-500 animate-pulse' : userRole === 'developer' ? 'text-emerald-400' : 'text-amber-500'}`}>
+              ROLE: {userRole}
+            </span>
+          </div>
+          
           <StatBox icon={<RadioTower size={16}/>} label="World Tick" value={`${world?.tick ?? 0}`} color="text-cyan-400" />
           <StatBox icon={<Shield size={16}/>} label="Integrity" value={`${stability}%`} color={stability < 40 ? 'text-red-500' : 'text-emerald-400'} />
+          
+          <button 
+            onClick={async () => {
+              // Standard logout with CSRF protection header
+              await fetch('http://localhost:8000/auth/logout', { 
+                method: 'POST', 
+                credentials: 'include',
+                headers: { 'X-CSRF-Token': '1' }
+              });
+              sessionStorage.clear();
+              window.location.href = '/login';
+            }}
+            className="px-3 py-1.5 border border-red-500/30 hover:border-red-500 text-red-500 hover:bg-red-500/10 text-[9px] uppercase tracking-wider font-orbitron font-bold rounded cursor-pointer transition-all duration-300"
+          >
+            LOGOUT
+          </button>
         </div>
       </header>
 
@@ -60,6 +121,7 @@ export default function Dashboard() {
         <div className="flex-1 min-h-0">
           <SimulationWorldMap
             world={world}
+            userRole={userRole}
             onParameterChange={updateWorldParameter}
             onSpawnAgent={spawnAgent}
           />

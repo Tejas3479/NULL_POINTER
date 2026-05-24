@@ -1,0 +1,17 @@
+{
+  "admin-operator@nullpointer.local": {
+    "username": "admin-operator",
+    "email": "admin-operator@nullpointer.local",
+    "role": "admin"
+  },
+  "dev-operator@nullpointer.local": {
+    "username": "dev-operator",
+    "email": "dev-operator@nullpointer.local",
+    "role": "developer"
+  },
+  "viewer-operator@nullpointer.local": {
+    "username": "viewer-operator",
+    "email": "viewer-operator@nullpointer.local",
+    "role": "viewer"
+  }
+}
