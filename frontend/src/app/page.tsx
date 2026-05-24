@@ -7,6 +7,12 @@ import { Activity, Flame, Shield, Cpu, RadioTower } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
+const getCsrfToken = (): string => {
+  if (typeof document === 'undefined') return '1';
+  const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]*)'));
+  return match ? decodeURIComponent(match[2]) : '1';
+};
+
 export default function Dashboard() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -93,7 +99,7 @@ export default function Dashboard() {
               await fetch('http://localhost:8000/auth/logout', { 
                 method: 'POST', 
                 credentials: 'include',
-                headers: { 'X-CSRF-Token': '1' }
+                headers: { 'X-CSRF-Token': getCsrfToken() }
               });
               sessionStorage.clear();
               window.location.href = '/login';
