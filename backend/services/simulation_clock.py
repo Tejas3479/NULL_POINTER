@@ -37,6 +37,12 @@ class SimulationClock:
                     "world": world
                 })
                 
+                # Retrieve current tick's events and narrate them asynchronously
+                tick_events = [e for e in world.get("events", []) if e.get("tick") == world["tick"]]
+                if tick_events:
+                    from backend.narrative.chronicle_compiler import process_tick_events
+                    asyncio.create_task(process_tick_events(world["world_id"], world["tick"], tick_events))
+
                 # Signal the tick event
                 self._tick_event.set()
                 # Yield control to allow subscribers to run

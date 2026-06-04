@@ -831,6 +831,42 @@ async def reset_simulation(payload: Optional[ResetRequest] = None, current_user:
     
     return {"status": "reset", "world": world_store.snapshot()}
 
+@app.get("/v1/simulation/{world_id}/chronicle")
+async def get_chronicle(world_id: str, current_user: User = Depends(get_current_user)):
+    # 1. Fetch from Supabase chronicle_entries if available
+    if world_store.supabase:
+        try:
+            result = (
+                world_store.supabase.table("chronicle_entries")
+                .select("*")
+                .eq("world_id", world_id)
+                .order("tick", desc=True)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            if result.data is not None:
+                return result.data
+        except Exception as e:
+            print(f"!!! Supabase fetch error for chronicle_entries: {e} !!!")
+
+    # 2. Fallback to state lore array filtered/formatted
+    if world_store.state and world_store.state.get("world_id") == world_id:
+        lore_list = world_store.state.get("lore", [])
+        formatted = []
+        for item in lore_list:
+            formatted.append({
+                "id": item.get("id"),
+                "world_id": world_id,
+                "tick": item.get("tick", 0),
+                "title": item.get("title", ""),
+                "body": item.get("body", ""),
+                "faction": "operators",  # Fallback voice
+                "created_at": utc_now()
+            })
+        return sorted(formatted, key=lambda x: x["tick"], reverse=True)
+        
+    return []
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

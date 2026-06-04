@@ -91,6 +91,14 @@ export default function Dashboard() {
             </span>
           </div>
           
+          <a 
+            href={`/sim/${world?.world_id ?? 'local-null-pointer'}/chronicle`}
+            className="px-3 py-1.5 border border-cyan-500/30 hover:border-cyan-500 text-cyan-400 hover:bg-cyan-500/10 text-[9px] uppercase tracking-wider font-orbitron font-bold rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5"
+          >
+            <RadioTower size={12} />
+            CHRONICLE FEED
+          </a>
+
           <StatBox icon={<RadioTower size={16}/>} label="World Tick" value={`${world?.tick ?? 0}`} color="text-cyan-400" />
           <StatBox icon={<Shield size={16}/>} label="Integrity" value={`${stability}%`} color={stability < 40 ? 'text-red-500' : 'text-emerald-400'} />
           

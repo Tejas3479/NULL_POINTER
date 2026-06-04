@@ -36,9 +36,11 @@ BASE_WORLD: Dict[str, Any] = {
         "faction_pressure": 0.4,
     },
     "factions": [
-        {"id": "kernel", "name": "Kernel Choir", "territory": 34, "influence": 52, "stance": "defensive"},
-        {"id": "ghost", "name": "Ghost Parliament", "territory": 29, "influence": 61, "stance": "hostile"},
-        {"id": "operators", "name": "Human Operators", "territory": 37, "influence": 47, "stance": "adaptive"},
+        {"id": "kernel", "name": "Kernel Choir", "territory": 20, "influence": 50, "stance": "defensive"},
+        {"id": "ghost", "name": "Ghost Parliament", "territory": 20, "influence": 50, "stance": "hostile"},
+        {"id": "operators", "name": "Human Operators", "territory": 20, "influence": 50, "stance": "adaptive"},
+        {"id": "parasite", "name": "Parasite Swarm", "territory": 20, "influence": 50, "stance": "parasitic"},
+        {"id": "awakening", "name": "Awakened Loop", "territory": 20, "influence": 50, "stance": "interpretive"},
     ],
     "anomalies": [
         {"id": "a1", "name": "Clock Drift", "x": -2.5, "y": 0.9, "z": 0.2, "severity": 36, "faction": "kernel"},
@@ -182,6 +184,22 @@ class WorldStore:
                         "updated_at": utc_now()
                     }).execute()
                     self.state = new_state
+                    
+                    # Trigger initialize_new_world_narrative in background
+                    try:
+                        import asyncio
+                        from backend.narrative.chronicle_compiler import initialize_new_world_narrative
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(initialize_new_world_narrative(world_id, new_state["parameters"]))
+                        except RuntimeError:
+                            import threading
+                            def run_in_thread():
+                                asyncio.run(initialize_new_world_narrative(world_id, new_state["parameters"]))
+                            threading.Thread(target=run_in_thread, daemon=True).start()
+                    except Exception as e:
+                        print(f"!!! Error launching myth initialization background task: {e} !!!")
+                        
                     return self.state
             except Exception as e:
                 last_error = e
@@ -303,21 +321,17 @@ class WorldStore:
         archetype["unlocked"] = True
         archetype["discovered_by"] = archetype.get("discovered_by") or "operator"
         
-        # Generate dynamic unique biography
-        birthplaces = ["sector 7G", "the heap allocation pool", "an unmapped memory register", "the main thread execution branch", "a garbage collection routine"]
-        motivations = ["aims to uncover the secret ghost signal", "wants to purify the thread cache", "strives to break structural inheritance limits", "seeks the ultimate None dereference", "protects critical network loops"]
-        quirks = ["speaks only in hexadecimal logs", "constantly drifts telemetry metrics", "retains memories across heap resets", "distrusts the system integrity critic", "filters code inputs aggressively"]
+        loyalty = random.choice(["kernel", "ghost", "operators", "parasite", "awakening"])
+        faction_name = next((f["name"] for f in self.state.get("factions", []) if f["id"] == loyalty), loyalty.upper())
         
-        birth = random.choice(birthplaces)
-        motivation = random.choice(motivations)
-        quirk = random.choice(quirks)
-        biography = f"Compiled in {birth}. A {archetype['role'].lower()} with a {archetype['temperament'].lower()} nature. They {motivation} and {quirk}."
+        from backend.narrative.agent_bio import generate_agent_bio
+        biography = generate_agent_bio(name or archetype["name"], archetype, faction_name, self.state)
 
         agent = {
             "id": f"agent-{uuid.uuid4().hex[:8]}",
             "archetype_id": archetype_id,
             "name": name or archetype["name"],
-            "loyalty": random.choice(["kernel", "ghost", "operators"]),
+            "loyalty": loyalty,
             "mood": random.choice(["curious", "guarded", "volatile", "focused", "reverent"]),
             "memory": [f"Spawned by operator at tick {self.state['tick']}."],
             "biography": biography,
