@@ -736,9 +736,46 @@ async def attack_timer():
     except asyncio.CancelledError:
         pass
 
+async def generate_code_from_description(description: str, vulnerability: str) -> str:
+    """Uses LLM to generate a Python patch code based on operator description and vulnerability snippet."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key or "your_openai_api_key" in api_key:
+        return "invalid code: missing api key or LLM failed to generate"
+    try:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model="gpt-4o", temperature=0.2, api_key=api_key)
+        prompt = f"""You are an automated code patch generator for a sandboxed execution environment.
+Given the following vulnerable Python code snippet:
+{vulnerability}
+
+And the following operator description of the patch:
+{description}
+
+Generate the corrected Python code that fixes the vulnerability described.
+Your output must be ONLY the raw, complete executable Python code.
+- Do NOT include any explanations, markdown code blocks, backticks, or other wrappers.
+- Do NOT include comments unless necessary.
+- Output ONLY valid, executable Python code.
+"""
+        response = await asyncio.to_thread(llm.invoke, prompt)
+        content = response.content.strip()
+        # Clean markdown code wrappers if present
+        if content.startswith("```"):
+            lines = content.splitlines()
+            if lines[0].startswith("```"):
+                content = "\n".join(lines[1:-1]).strip()
+            if content.startswith("python"):
+                content = content[6:].strip()
+            elif content.startswith("py"):
+                content = content[2:].strip()
+        return content
+    except Exception as e:
+        print(f"!!! Error generating patch code: {e} !!!")
+        return "invalid code: LLM exception during generation"
+
 @app.post("/v1/simulation/patch")
 async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(get_current_user)):
-    """Player attempts to 'reinforce' the code with a semantic description."""
+    """Player attempts to 'reinforce' the code with a semantic description or custom code."""
     if not active_attack["vulnerability"]:
         return {"error": "No active attack to patch."}
     
@@ -746,32 +783,19 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
     code = payload.code
     player_id = payload.player_id
     
-    if description and not code:
-        from backend.services.world_store import evaluate_patch, utc_now
-        raw_verdict = evaluate_patch(description, active_attack["vulnerability"])
-        verdict = {
-            "accepted": raw_verdict["accepted"],
-            "score": raw_verdict["score"],
-            "reason": raw_verdict["reason"],
-            "diff": raw_verdict["suggested_diff"],
-            "suggested_diff": raw_verdict["suggested_diff"],
-            "sandbox_trace": {
-                "language": "semantic",
-                "started_at": utc_now(),
-                "syntax": {"success": True, "error": ""},
-                "baseline": None,
-                "patched": None,
-            }
-        }
+    if description and not (code and code.strip()):
+        patch_code = await generate_code_from_description(description, active_attack["vulnerability"])
+        language = "python"
     else:
         patch_code = code or description
         language = payload.language or "python"
-        verdict = await world_store.accept_patch(
-            patch_code=patch_code,
-            vulnerability=active_attack["vulnerability"],
-            language=language,
-            player_id=player_id,
-        )
+        
+    verdict = await world_store.accept_patch(
+        patch_code=patch_code,
+        vulnerability=active_attack["vulnerability"],
+        language=language,
+        player_id=player_id,
+    )
         
     if verdict["accepted"]:
         if active_attack["timer_task"]:
@@ -893,6 +917,24 @@ async def get_chronicle(world_id: str, current_user: User = Depends(get_current_
         return sorted(formatted, key=lambda x: x["tick"], reverse=True)
         
     return []
+
+@app.get("/v1/simulation/{world_id}/patches")
+async def get_patch_history(world_id: str, current_user: User = Depends(get_current_user)):
+    """Returns patch execution traces from Supabase for the given world."""
+    if not world_store.supabase:
+        return []
+    try:
+        result = (
+            world_store.supabase.table("patch_traces")
+            .select("*")
+            .eq("world_id", world_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        print(f"!!! Supabase fetch error for patch_traces: {e} !!!")
+        return []
 
 @app.get("/v1/ghost/variants")
 async def list_ghost_variants(current_user: User = Depends(get_current_user)):

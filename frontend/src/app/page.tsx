@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { GhostEvolutionPanel } from '@/components/GhostEvolutionPanel';
+import { PatchHistoryPanel } from '@/components/PatchHistoryPanel';
 import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
@@ -19,7 +20,7 @@ export default function Dashboard() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
-  const [activeTab, setActiveTab] = useState<'map' | 'evolution'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'evolution' | 'patches'>('map');
 
   useEffect(() => {
     // 1. Verify session persistence on mount using httpOnly cookie
@@ -153,6 +154,14 @@ export default function Dashboard() {
           >
             Ghost Evolution
           </button>
+          <button 
+            onClick={() => setActiveTab('patches')}
+            className={`flex-1 py-1.5 font-orbitron text-[10px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              activeTab === 'patches' ? 'text-emerald-400 bg-purple-950/30 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Patch History
+          </button>
         </div>
 
         <div className="flex-1 min-h-0">
@@ -163,8 +172,10 @@ export default function Dashboard() {
               onParameterChange={updateWorldParameter}
               onSpawnAgent={spawnAgent}
             />
-          ) : (
+          ) : activeTab === 'evolution' ? (
             <GhostEvolutionPanel worldId={world?.world_id || 'local-null-pointer'} />
+          ) : (
+            <PatchHistoryPanel worldId={world?.world_id || 'local-null-pointer'} />
           )}
         </div>
 

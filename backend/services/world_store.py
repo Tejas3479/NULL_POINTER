@@ -392,6 +392,7 @@ class WorldStore:
             verdict = self._patch_verdict(
                 accepted=False,
                 score=10,
+                critic_score=0,
                 reason="Sandbox patch verification currently requires Python so ast.parse can validate syntax.",
                 diff=diff,
                 trace=trace,
@@ -409,6 +410,7 @@ class WorldStore:
             verdict = self._patch_verdict(
                 accepted=False,
                 score=5,
+                critic_score=0,
                 reason=f"Patch has invalid Python syntax: {trace['syntax']['error']}",
                 diff=diff,
                 trace=trace,
@@ -421,46 +423,47 @@ class WorldStore:
         trace["baseline"] = baseline.model_dump()
         trace["patched"] = patched.model_dump()
 
+        critic_score = 0
         if not patched.success:
-            verdict = self._patch_verdict(
-                accepted=False,
-                score=15,
-                reason="Patch introduced a runtime error during sandbox execution.",
-                diff=diff,
-                trace=trace,
-            )
-        elif not baseline.success and patched.success:
-            verdict = self._patch_verdict(
-                accepted=True,
-                score=95,
-                reason="Patch fixes the vulnerable snippet: baseline failed, patched code executed successfully.",
-                diff=diff,
-                trace=trace,
-            )
-        elif baseline.success and patched.success and baseline.output != patched.output:
-            verdict = self._patch_verdict(
-                accepted=True,
-                score=80,
-                reason="Patch executed successfully and changed the vulnerable snippet output.",
-                diff=diff,
-                trace=trace,
-            )
-        elif baseline.success and patched.success and diff.strip():
-            verdict = self._patch_verdict(
-                accepted=True,
-                score=62,
-                reason="Patch executed successfully, but sandbox output did not prove a behavioral fix.",
-                diff=diff,
-                trace=trace,
-            )
+            sandbox_score = 15
+            score = 15
+            accepted = False
+            reason = "Patch introduced a runtime error during sandbox execution."
         else:
-            verdict = self._patch_verdict(
-                accepted=False,
-                score=25,
-                reason="Sandbox could not prove that the patch fixed the vulnerability.",
-                diff=diff,
-                trace=trace,
-            )
+            if not baseline.success and patched.success:
+                sandbox_score = 95
+                reason = "Patch fixes the vulnerable snippet: baseline failed, patched code executed successfully."
+            elif baseline.success and patched.success and baseline.output != patched.output:
+                sandbox_score = 80
+                reason = "Patch executed successfully and changed the vulnerable snippet output."
+            elif baseline.success and patched.success and diff.strip():
+                sandbox_score = 62
+                reason = "Patch executed successfully, but sandbox output did not prove a behavioral fix."
+            else:
+                sandbox_score = 25
+                reason = "Sandbox could not prove that the patch fixed the vulnerability."
+            
+            # Execute semantic LLM Critic on syntax-valid and runtime-valid executions
+            critic_score = await get_critic_score(vulnerability, patch_code)
+            score = max(sandbox_score, critic_score)
+            accepted = score >= 40
+
+            if critic_score > sandbox_score:
+                reason = f"LLM critic approved semantic correctness with score {critic_score}/100. (Sandbox baseline vs patched scored {sandbox_score})."
+            else:
+                reason = f"Sandbox verified patch behavior with score {sandbox_score}/100. (Critic score: {critic_score})."
+
+            if score < 40:
+                reason = f"Patch rejected. Combined score {score}/100 is below the threshold of 40. Sandbox scored {sandbox_score}, Critic scored {critic_score}."
+
+        verdict = self._patch_verdict(
+            accepted=accepted,
+            score=score,
+            critic_score=critic_score,
+            reason=reason,
+            diff=diff,
+            trace=trace,
+        )
 
         self._store_patch_trace(player_id, vulnerability, patch_code, verdict)
         return verdict
@@ -470,6 +473,7 @@ class WorldStore:
         *,
         accepted: bool,
         score: int,
+        critic_score: int,
         reason: str,
         diff: str,
         trace: Dict[str, Any],
@@ -477,6 +481,7 @@ class WorldStore:
         return {
             "accepted": accepted,
             "score": max(0, min(100, score)),
+            "critic_score": critic_score,
             "reason": reason,
             "diff": diff,
             "suggested_diff": diff,
@@ -499,6 +504,7 @@ class WorldStore:
             "patch_code": patch_code,
             "diff": verdict["diff"],
             "score": verdict["score"],
+            "critic_score": verdict.get("critic_score", 0),
             "accepted": verdict["accepted"],
             "feedback": verdict["reason"],
             "sandbox_trace": verdict["sandbox_trace"],
@@ -517,6 +523,7 @@ class WorldStore:
             {
                 "trace_id": payload["id"],
                 "score": verdict["score"],
+                "critic_score": verdict.get("critic_score", 0),
                 "accepted": verdict["accepted"],
                 "diff": verdict["diff"],
                 "sandbox_trace": verdict["sandbox_trace"],
@@ -524,28 +531,42 @@ class WorldStore:
         )
 
 
-PATCH_KEYWORDS = {
-    "specificity": ("because", "therefore", "line", "function", "endpoint", "state", "timer", "validate", "sanitize"),
-    "security": ("auth", "permission", "sanitize", "validate", "escape", "rate", "schema", "timeout", "guard"),
-    "diff": ("+", "-", "replace", "remove", "add", "change", "return", "if", "try", "except"),
-}
+async def get_critic_score(vulnerability: str, patch_code: str) -> int:
+    """Uses LLM to evaluate semantic correctness on a 0-100 scale."""
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    if not api_key or "your_openai_api_key" in api_key:
+        return 0
+    try:
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(model="gpt-4o", temperature=0.0, api_key=api_key)
+        prompt = f"""You are a senior security and software engineer critic.
+Your job is to evaluate the semantic correctness and quality of a code patch against a vulnerable snippet.
 
+Vulnerable Code Snippet:
+{vulnerability}
 
-def evaluate_patch(description: str, vulnerability: str) -> Dict[str, Any]:
-    normalized = description.lower()
-    vulnerability_terms = set(re.findall(r"[a-zA-Z_]{4,}", vulnerability.lower()))
-    description_terms = set(re.findall(r"[a-zA-Z_]{4,}", normalized))
-    overlap = len(vulnerability_terms & description_terms)
-    keyword_score = sum(1 for group in PATCH_KEYWORDS.values() for word in group if word in normalized)
-    length_score = min(25, len(description) // 8)
-    score = min(100, length_score + keyword_score * 7 + overlap * 9)
-    accepted = score >= 55 and overlap > 0
-    return {
-        "accepted": accepted,
-        "score": score,
-        "reason": "Patch names the vulnerable code path and proposes a concrete guard." if accepted else "Patch needs to reference the vulnerable logic and describe a concrete code change.",
-        "suggested_diff": build_suggested_diff(description, vulnerability),
-    }
+Proposed Code Patch:
+{patch_code}
+
+Evaluate the proposed patch on a scale from 0 to 100:
+- A score of 0-15 means the patch is completely broken, has syntax errors, or does not address the issue at all.
+- A score of 16-39 means it attempts to address the issue but is insufficient, incorrect, or insecure.
+- A score of 40-79 means the patch demonstrates understanding, is semi-correct or creative, but might not be optimal or doesn't cover all edge cases. (Recall that the acceptance threshold is 40).
+- A score of 80-100 means the patch is semantically correct, robust, and cleanly resolves the vulnerability.
+
+Provide your output as a single integer between 0 and 100.
+Do NOT output any markdown wrappers, explanations, or other text. Just the integer.
+"""
+        import asyncio
+        response = await asyncio.to_thread(llm.invoke, prompt)
+        content = response.content.strip()
+        match = re.search(r'\d+', content)
+        if match:
+            return min(100, max(0, int(match.group(0))))
+        return 0
+    except Exception as e:
+        print(f"!!! Error in get_critic_score: {e} !!!")
+        return 0
 
 
 def build_code_diff(original_code: str, patched_code: str) -> str:
@@ -557,17 +578,6 @@ def build_code_diff(original_code: str, patched_code: str) -> str:
             tofile="patched.py",
             lineterm="",
         )
-    )
-
-
-def build_suggested_diff(description: str, vulnerability: str) -> str:
-    vulnerable_line = vulnerability.strip().splitlines()[0] if vulnerability.strip() else "# unknown"
-    return "\n".join(
-        [
-            "- " + vulnerable_line,
-            "+ # operator patch: " + description.strip()[:96],
-            "+ " + vulnerable_line,
-        ]
     )
 
 
