@@ -5,6 +5,7 @@ import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { GhostEvolutionPanel } from '@/components/GhostEvolutionPanel';
 import { PatchHistoryPanel } from '@/components/PatchHistoryPanel';
+import { SourceEditor } from '@/components/SourceEditor';
 import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch, Share2, Copy, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
@@ -20,7 +21,7 @@ export default function Dashboard() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
-  const [activeTab, setActiveTab] = useState<'map' | 'evolution' | 'patches'>('map');
+  const [activeTab, setActiveTab] = useState<'map' | 'evolution' | 'patches' | 'editor'>('map');
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedBadge, setCopiedBadge] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -235,6 +236,14 @@ export default function Dashboard() {
           >
             Patch History
           </button>
+          <button 
+            onClick={() => setActiveTab('editor')}
+            className={`flex-1 py-1.5 font-orbitron text-[10px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              activeTab === 'editor' ? 'text-cyan-400 bg-purple-950/30 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Code Editor
+          </button>
         </div>
 
         <div className="flex-1 min-h-0">
@@ -247,8 +256,10 @@ export default function Dashboard() {
             />
           ) : activeTab === 'evolution' ? (
             <GhostEvolutionPanel worldId={world?.world_id || 'local-null-pointer'} />
-          ) : (
+          ) : activeTab === 'patches' ? (
             <PatchHistoryPanel worldId={world?.world_id || 'local-null-pointer'} />
+          ) : (
+            <SourceEditor />
           )}
         </div>
 

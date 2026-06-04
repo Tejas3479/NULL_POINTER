@@ -509,13 +509,196 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "role": current_user.role.value
     }
 
+import ast
+
+class CodeAnalysisVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.findings = []
+        self.banned_modules = {
+            "os", "sys", "subprocess", "shutil", "pty", "platform", "importlib", "gc", "ctypes",
+            "socket", "urllib", "requests", "http", "ftplib", "telnetlib", "smtplib", 
+            "poplib", "imaplib", "nntplib", "xmlrpc", "aiohttp", "httpx"
+        }
+        self.banned_names = {
+            "eval", "exec", "__import__", "open", "compile", 
+            "getattr", "setattr", "delattr", "hasattr", "globals", "locals"
+        }
+
+    def add_finding(self, severity: str, rule: str, message: str, node: ast.AST):
+        line = getattr(node, "lineno", 1)
+        self.findings.append({
+            "severity": severity,
+            "rule": rule,
+            "message": message,
+            "line": line
+        })
+
+    def visit_Name(self, node: ast.Name):
+        if node.id in self.banned_names:
+            severity = "HIGH" if node.id in ("eval", "exec") else "MEDIUM"
+            self.add_finding(
+                severity=severity,
+                rule="banned_builtin",
+                message=f"Use of introspection/system builtin '{node.id}' can lead to security bypasses.",
+                node=node
+            )
+        if node.id.startswith("__") and node.id.endswith("__"):
+            self.add_finding(
+                severity="HIGH",
+                rule="dunder_access",
+                message=f"Access to double-underscore name '{node.id}' is prohibited.",
+                node=node
+            )
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute):
+        if node.attr.startswith("__") and node.attr.endswith("__"):
+            self.add_finding(
+                severity="HIGH",
+                rule="dunder_access",
+                message=f"Access to double-underscore attribute '{node.attr}' is prohibited.",
+                node=node
+            )
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import):
+        for alias in node.names:
+            root_module = alias.name.split('.')[0]
+            if root_module in self.banned_modules:
+                self.add_finding(
+                    severity="HIGH",
+                    rule="banned_module_import",
+                    message=f"Importing OS/System/Network module '{alias.name}' is prohibited.",
+                    node=node
+                )
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        if node.module:
+            root_module = node.module.split('.')[0]
+            if root_module in self.banned_modules:
+                self.add_finding(
+                    severity="HIGH",
+                    rule="banned_module_import",
+                    message=f"Import from banned module '{node.module}' is prohibited.",
+                    node=node
+                )
+        for alias in node.names:
+            if alias.name in self.banned_names:
+                self.add_finding(
+                    severity="MEDIUM",
+                    rule="banned_builtin",
+                    message=f"Import of banned builtin name '{alias.name}' is prohibited.",
+                    node=node
+                )
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign):
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                name = target.id.lower()
+                if any(k in name for k in ["key", "secret", "password", "token", "credential"]):
+                    if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and node.value.value:
+                        self.add_finding(
+                            severity="HIGH",
+                            rule="hardcoded_secrets",
+                            message=f"Potential hardcoded secret or credential assigned to variable '{target.id}'.",
+                            node=node
+                        )
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id == "print":
+            self.add_finding(
+                severity="INFO",
+                rule="info_check",
+                message="Use of print() found. Consider using a structured logger for cleaner output.",
+                node=node
+            )
+        self.generic_visit(node)
+
+    def visit_While(self, node: ast.While):
+        is_constant_true = False
+        if isinstance(node.test, ast.Constant) and node.test.value is True:
+            is_constant_true = True
+        elif isinstance(node.test, ast.Name) and node.test.id == "True":
+            is_constant_true = True
+        elif isinstance(node.test, ast.Constant) and node.test.value == 1:
+            is_constant_true = True
+        
+        if is_constant_true:
+            self.add_finding(
+                severity="MEDIUM",
+                rule="infinite_loop",
+                message="Potential infinite loop. Ensure loop body has a break or return statement.",
+                node=node
+            )
+        self.generic_visit(node)
+
 @app.post("/api/analyze")
 async def analyze_code(payload: dict, current_user: User = Depends(get_current_user)):
+    code = payload.get("code", "")
+    language = payload.get("language", "python").lower()
+    
+    findings = []
+    if not code.strip():
+        return {"status": "success", "findings": findings}
+        
+    if language == "python":
+        try:
+            tree = ast.parse(code)
+            visitor = CodeAnalysisVisitor()
+            visitor.visit(tree)
+            findings = visitor.findings
+        except SyntaxError as e:
+            findings.append({
+                "severity": "HIGH",
+                "rule": "syntax_error",
+                "message": f"Syntax error in Python code: {e.msg}",
+                "line": e.lineno or 1
+            })
+    elif language == "javascript":
+        lines = code.split("\n")
+        for i, line in enumerate(lines, 1):
+            if re.search(r'\beval\s*\(|\bFunction\s*\(', line):
+                findings.append({
+                    "severity": "HIGH",
+                    "rule": "dangerous_eval",
+                    "message": "Use of eval() or dynamic Function constructors in JavaScript is dangerous.",
+                    "line": i
+                })
+            if re.search(r'\brequire\s*\(\s*[\'"](child_process|fs|net|http|os|path|dns|dgram|crypto)[\'"]\s*\)|import\s+.*\s+from\s+[\'"](child_process|fs|net|http|os|path|dns|dgram|crypto)[\'"]', line):
+                findings.append({
+                    "severity": "HIGH",
+                    "rule": "require_import",
+                    "message": "Importing system/network library in Node.js is restricted.",
+                    "line": i
+                })
+            if re.search(r'\b(secret|password|token|key|api_key|credential)\s*=\s*[\'"][^\'"]+[\'"]', line, re.IGNORECASE):
+                findings.append({
+                    "severity": "HIGH",
+                    "rule": "hardcoded_secrets",
+                    "message": "Potential hardcoded credentials/secrets detected.",
+                    "line": i
+                })
+            if re.search(r'while\s*\(\s*(true|1)\s*\)', line):
+                findings.append({
+                    "severity": "MEDIUM",
+                    "rule": "infinite_loop",
+                    "message": "Potential infinite loop detected.",
+                    "line": i
+                })
+            if re.search(r'console\.log\s*\(', line):
+                findings.append({
+                    "severity": "INFO",
+                    "rule": "console_log",
+                    "message": "Use of console.log() found. Consider utilizing structured logging.",
+                    "line": i
+                })
+                
     return {
         "status": "success",
-        "message": "Code integrity verified successfully.",
-        "user": current_user.username,
-        "role": current_user.role.value
+        "findings": findings
     }
 
 def get_current_state() -> dict:
