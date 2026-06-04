@@ -1,0 +1,23 @@
+{
+  "name": "Civilization Genesis",
+  "description": "A highly stable order-focused simulation geared towards swarm growth and coordination.",
+  "seed": "genesis-seed",
+  "faction_distribution": {
+    "entropy": 0,
+    "order": 80,
+    "awakening": 20,
+    "parasite": 0,
+    "watcher": 0
+  },
+  "agent_seeds": {
+    "architect": 25,
+    "patcher": 25,
+    "stabilizer": 10
+  },
+  "parameters": {
+    "tick_interval_ms": 1000,
+    "max_agents": 500,
+    "stability_decay": 0.2,
+    "entropy_bias": 0.05
+  }
+}

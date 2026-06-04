@@ -828,6 +828,125 @@ async def fork_snapshot(id: str, current_user: User = Depends(get_current_user))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fork snapshot: {str(e)}")
 
+class CreateWorldRequest(SafeBaseModel):
+    name: str
+    description: Optional[str] = ""
+    seed: Optional[str] = ""
+    faction_distribution: Optional[dict] = None
+    agent_seeds: Optional[dict] = None
+    parameters: Optional[dict] = None
+
+@app.post("/v1/worlds")
+async def create_world(payload: CreateWorldRequest, current_user: User = Depends(get_current_user)):
+    try:
+        from copy import deepcopy
+        import uuid
+        import random
+        from backend.services.world_store import BASE_WORLD, utc_now
+        from backend.narrative.agent_bio import generate_agent_bio
+        from backend.services.social_graph import initialize_relationships
+        
+        # 1. Generate unique world_id
+        world_id = f"custom-{uuid.uuid4().hex[:8]}"
+        
+        # 2. Setup state
+        new_state = deepcopy(BASE_WORLD)
+        new_state["world_id"] = world_id
+        new_state["name"] = payload.name
+        new_state["description"] = payload.description
+        new_state["tick"] = 0
+        new_state["heat"] = 0.0
+        new_state["stability"] = 100
+        new_state["events"] = []
+        new_state["agents"] = []
+        
+        # 3. Setup parameters
+        if payload.parameters:
+            new_state["parameters"].update(payload.parameters)
+            
+        # 4. Seed random generator if seed is provided
+        seed_str = payload.seed or str(random.randint(10000, 99999))
+        new_state["seed"] = seed_str
+        new_state["faction_distribution"] = payload.faction_distribution
+        new_state["agent_seeds"] = payload.agent_seeds
+        
+        old_state = random.getstate()
+        try:
+            seed_val = int(seed_str)
+        except ValueError:
+            import hashlib
+            seed_val = int(hashlib.sha256(seed_str.encode()).hexdigest(), 16) & 0xffffffff
+        random.seed(seed_val)
+        
+        # 5. Populate agents based on agent_seeds
+        agent_seeds = payload.agent_seeds or {}
+        for arch_id in sorted(agent_seeds.keys()):
+            count = int(agent_seeds[arch_id])
+            if count <= 0:
+                continue
+            
+            # Find archetype in state["agent_archetypes"]
+            archetype = next((item for item in new_state["agent_archetypes"] if item["id"] == arch_id), None)
+            if not archetype:
+                continue
+                
+            archetype["unlocked"] = True
+            archetype["discovered_by"] = "operator"
+            
+            for i in range(count):
+                loyalty = random.choice(["kernel", "ghost", "operators", "parasite", "awakening"])
+                faction_name = next((f["name"] for f in new_state.get("factions", []) if f["id"] == loyalty), loyalty.upper())
+                
+                name = f"{archetype['name']} {i+1}"
+                biography = generate_agent_bio(name, archetype, faction_name, new_state)
+                
+                agent = {
+                    "id": f"agent-{world_id}-{arch_id}-{i}",
+                    "archetype_id": arch_id,
+                    "name": name,
+                    "loyalty": loyalty,
+                    "mood": random.choice(["curious", "guarded", "volatile", "focused", "reverent"]),
+                    "memory": ["Spawned during simulation instantiation."],
+                    "biography": biography,
+                    "active": True,
+                }
+                
+                initialize_relationships(agent, new_state["agents"])
+                new_state["agents"].append(agent)
+                
+        # Restore random generator state
+        random.setstate(old_state)
+        
+        # 6. Save world in Supabase database
+        world_store.supabase.table("simulation_worlds").insert({
+            "world_id": world_id,
+            "state": new_state,
+            "updated_at": utc_now()
+        }).execute()
+        
+        # 7. Write history lore chronicle entry
+        try:
+            from backend.narrative.chronicle_compiler import initialize_new_world_narrative
+            loop = asyncio.get_running_loop()
+            loop.create_task(initialize_new_world_narrative(world_id, new_state["parameters"]))
+        except Exception:
+            pass
+            
+        return {"world_id": world_id, "status": "created"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create custom world: {str(e)}")
+
+@app.get("/v1/simulation/{world_id}/state")
+async def get_world_state_by_id(world_id: str, current_user: User = Depends(get_current_user)):
+    try:
+        res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
+        if res.data:
+            return res.data[0].get("state")
+        raise HTTPException(status_code=404, detail="World not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
 @app.websocket("/ws/heat")
 async def websocket_endpoint(
     websocket: WebSocket,

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Shield, Flame, RadioTower, Lock, LogIn, AlertCircle } from 'lucide-react';
+import { Shield, Flame, RadioTower, Lock, LogIn, AlertCircle, GitBranch } from 'lucide-react';
+import Link from 'next/link';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -90,6 +91,14 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
             </div>
             <span className={`font-orbitron font-bold text-sm ${stability < 40 ? 'text-red-500 animate-pulse' : 'text-emerald-400'}`}>{stability}%</span>
           </div>
+
+          <Link
+            href={`/create?remix=${worldId}`}
+            className="px-4 py-2 border border-purple-500 hover:bg-purple-500/10 text-purple-400 font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+          >
+            <GitBranch size={14} />
+            REMIX WORLD
+          </Link>
 
           <a
             href="/login"

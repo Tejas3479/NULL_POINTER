@@ -1,0 +1,24 @@
+{
+  "name": "Default Collapse",
+  "description": "The baseline scenario where ghost self-modification slowly degrades systemic integrity.",
+  "seed": "default-seed",
+  "faction_distribution": {
+    "entropy": 30,
+    "order": 30,
+    "awakening": 20,
+    "parasite": 10,
+    "watcher": 10
+  },
+  "agent_seeds": {
+    "disruptor": 10,
+    "architect": 10,
+    "prophet": 5,
+    "observer": 5
+  },
+  "parameters": {
+    "tick_interval_ms": 2000,
+    "max_agents": 200,
+    "stability_decay": 1.5,
+    "entropy_bias": 0.35
+  }
+}

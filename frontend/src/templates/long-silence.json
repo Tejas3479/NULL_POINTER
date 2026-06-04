@@ -1,0 +1,23 @@
+{
+  "name": "Long Silence",
+  "description": "A sparse simulation with high tick delays, minimal activity, and clean memory sweeps.",
+  "seed": "silence-seed",
+  "faction_distribution": {
+    "entropy": 5,
+    "order": 10,
+    "awakening": 10,
+    "parasite": 5,
+    "watcher": 70
+  },
+  "agent_seeds": {
+    "observer": 15,
+    "chronicler": 15,
+    "null": 10
+  },
+  "parameters": {
+    "tick_interval_ms": 5000,
+    "max_agents": 100,
+    "stability_decay": 0.1,
+    "entropy_bias": 0.1
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Maximum Entropy",
+  "description": "A world designed for ultimate computational instability, pushing memory registers to their limits.",
+  "seed": "entropy-max",
+  "faction_distribution": {
+    "entropy": 100,
+    "order": 0,
+    "awakening": 0,
+    "parasite": 0,
+    "watcher": 0
+  },
+  "agent_seeds": {
+    "disruptor": 50,
+    "void_caller": 20
+  },
+  "parameters": {
+    "tick_interval_ms": 2000,
+    "max_agents": 200,
+    "stability_decay": 2.5,
+    "entropy_bias": 0.95
+  }
+}
