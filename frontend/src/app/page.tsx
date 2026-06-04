@@ -5,7 +5,7 @@ import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { GhostEvolutionPanel } from '@/components/GhostEvolutionPanel';
 import { PatchHistoryPanel } from '@/components/PatchHistoryPanel';
-import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch } from 'lucide-react';
+import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch, Share2, Copy, Check } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
@@ -21,6 +21,9 @@ export default function Dashboard() {
   const [username, setUsername] = useState<string | null>(null);
   const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<'map' | 'evolution' | 'patches'>('map');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedBadge, setCopiedBadge] = useState(false);
+  const [sharing, setSharing] = useState(false);
 
   useEffect(() => {
     // 1. Verify session persistence on mount using httpOnly cookie
@@ -50,12 +53,58 @@ export default function Dashboard() {
     isConnected, 
     activeAttack,
     world, 
+    presenceList,
     sendCommand,
     updateWorldParameter, 
     spawnAgent,
     resetSimulation,
     injectEntropy
   } = useSimulationSocket('ws://127.0.0.1:8000/ws/heat');
+
+  const toggleShare = async () => {
+    if (!world) return;
+    setSharing(true);
+    try {
+      const isCurrentlyPublic = !!world.share?.public;
+      const res = await fetch('http://localhost:8000/v1/simulation/share', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        },
+        body: JSON.stringify({
+          public: !isCurrentlyPublic,
+          remixable: false
+        })
+      });
+      if (res.ok) {
+        // The server broadcasts the update to all clients, which updates useSimulationSocket's world state!
+      }
+    } catch (err) {
+      console.error("Failed to update share settings", err);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleCopyLink = () => {
+    if (!world) return;
+    const shareUrl = typeof window !== 'undefined' 
+      ? `${window.location.origin}/spectate/${world.world_id}` 
+      : `http://localhost:3000/spectate/${world.world_id}`;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleCopyBadge = () => {
+    if (!world) return;
+    const badgeMarkdown = `![Simulation Badge](http://localhost:8000/v1/simulation/${world.world_id}/badge.svg)`;
+    navigator.clipboard.writeText(badgeMarkdown);
+    setCopiedBadge(true);
+    setTimeout(() => setCopiedBadge(false), 2000);
+  };
 
   if (loadingAuth) {
     return (
@@ -136,6 +185,30 @@ export default function Dashboard() {
 
       {/* Sidebar Controls */}
       <aside className="col-span-12 xl:col-span-5 flex flex-col gap-6 overflow-hidden">
+        {/* Active Operators Presence */}
+        <div className="glass p-4 rounded border border-slate-800 bg-slate-950/20 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <h2 className="font-orbitron text-[10px] font-black uppercase tracking-widest text-slate-300">Active Operators</h2>
+            </div>
+            <span className="text-[9px] font-mono text-slate-500 bg-slate-900/60 border border-slate-800/80 px-1.5 py-0.5 rounded">
+              {presenceList.length} Online
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+            {presenceList.map((player, idx) => (
+              <span 
+                key={idx} 
+                className="text-[9px] uppercase font-mono bg-slate-950 border border-slate-900/60 text-slate-300 px-2 py-0.5 rounded flex items-center gap-1.5"
+              >
+                <span className={`w-1 h-1 rounded-full ${player.role === 'admin' ? 'bg-red-400 animate-ping' : 'bg-emerald-400'}`} />
+                {player.username} <span className="text-[8px] text-slate-500 font-bold">({player.role.substring(0, 3)})</span>
+              </span>
+            ))}
+          </div>
+        </div>
+
         {/* Tabs Bar */}
         <div className="flex border-b border-slate-800 bg-slate-950/20 rounded p-1">
           <button 
@@ -207,6 +280,83 @@ export default function Dashboard() {
               {heat > 80 ? 'CRITICAL' : heat > 50 ? 'UNSTABLE' : 'OPTIMAL'}
             </span>
           </div>
+        </div>
+
+        {/* Share Simulation Card */}
+        <div className="glass p-5 rounded-lg border border-slate-800/50 flex flex-col gap-4 relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Share2 className="text-purple-400" size={18} />
+              <h2 className="font-orbitron text-sm font-bold uppercase tracking-widest text-white">Share Simulation</h2>
+            </div>
+            {world?.share?.public && (
+              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-950/30 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span className="w-1 h-1 bg-emerald-400 rounded-full animate-pulse" />
+                {world.view_count ?? 0} Spectators
+              </span>
+            )}
+          </div>
+
+          <p className="text-[9px] uppercase tracking-wider text-slate-500 leading-normal font-mono">
+            Expose this simulation timeline as read-only to external observers.
+          </p>
+
+          <div className="flex items-center justify-between border-t border-b border-slate-900/60 py-3">
+            <span className="text-[10px] uppercase font-bold text-slate-400 font-orbitron">Public Access</span>
+            <button
+              onClick={toggleShare}
+              disabled={sharing}
+              className={`px-3 py-1.5 border font-orbitron text-[9px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer ${
+                world?.share?.public
+                  ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                  : 'border-slate-700 bg-slate-900/50 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+              }`}
+            >
+              {sharing ? 'UPDATING...' : world?.share?.public ? 'ENABLED (PUBLIC)' : 'DISABLED (PRIVATE)'}
+            </button>
+          </div>
+
+          {world?.share?.public && (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[9px] uppercase text-slate-500 font-bold">Spectator Link</span>
+                <div className="flex items-center gap-2 bg-black border border-slate-900 rounded p-1.5">
+                  <input
+                    type="text"
+                    readOnly
+                    value={typeof window !== 'undefined' ? `${window.location.origin}/spectate/${world.world_id}` : `http://localhost:3000/spectate/${world.world_id}`}
+                    className="flex-1 bg-transparent text-[10px] text-cyan-400 outline-none select-all font-mono"
+                  />
+                  <button
+                    onClick={handleCopyLink}
+                    className="p-1 hover:bg-slate-900 rounded text-slate-400 hover:text-white transition-all cursor-pointer"
+                    title="Copy Link"
+                  >
+                    {copiedLink ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[9px] uppercase text-slate-500 font-bold">Live Badge Markdown</span>
+                <div className="flex items-center gap-2 bg-black border border-slate-900 rounded p-1.5">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`![Simulation Badge](http://localhost:8000/v1/simulation/${world.world_id}/badge.svg)`}
+                    className="flex-1 bg-transparent text-[10px] text-purple-400 outline-none select-all font-mono"
+                  />
+                  <button
+                    onClick={handleCopyBadge}
+                    className="p-1 hover:bg-slate-900 rounded text-slate-400 hover:text-white transition-all cursor-pointer"
+                    title="Copy Badge Markdown"
+                  >
+                    {copiedBadge ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* System Control */}

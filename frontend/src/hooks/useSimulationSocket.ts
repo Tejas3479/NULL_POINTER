@@ -27,6 +27,11 @@ export interface SimulationWorld {
   agents: Array<{ id: string; archetype_id: string; name: string; loyalty: string; mood: string; memory: string[]; active: boolean; biography?: string }>;
   lore: Array<{ id: string; title: string; body: string; tick: number }>;
   events: Array<{ id: string; kind: string; message: string; tick: number; created_at: string }>;
+  share?: {
+    public: boolean;
+    remixable?: boolean;
+  };
+  view_count?: number;
 }
 
 const getCsrfToken = (): string => {
@@ -43,6 +48,7 @@ export const useSimulationSocket = (url: string) => {
   const [isConnected, setIsConnected] = useState(false);
   const [activeAttack, setActiveAttack] = useState<ActiveAttack | null>(null);
   const [world, setWorld] = useState<SimulationWorld | null>(null);
+  const [presenceList, setPresenceList] = useState<Array<{ username: string; role: string }>>([]);
   const socketRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -58,7 +64,28 @@ export const useSimulationSocket = (url: string) => {
       })
       .catch(() => undefined);
 
-    const socket = new WebSocket(url);
+    const getJwtToken = (): string => {
+      if (typeof document === 'undefined') return '';
+      const match = document.cookie.match(new RegExp('(^| )jwt_token=([^;]*)'));
+      return match ? decodeURIComponent(match[2]) : '';
+    };
+
+    const tokenVal = getJwtToken();
+    let worldId = 'local-null-pointer';
+    if (typeof window !== 'undefined') {
+      const matchPath = window.location.pathname.match(/\/sim\/([^/]+)/);
+      if (matchPath) {
+        worldId = matchPath[1];
+      }
+    }
+
+    const wsUrl = new URL(url);
+    wsUrl.searchParams.set("world_id", worldId);
+    if (tokenVal) {
+      wsUrl.searchParams.set("token", tokenVal);
+    }
+
+    const socket = new WebSocket(wsUrl.toString());
     socketRef.current = socket;
 
     socket.onopen = () => setIsConnected(true);
@@ -68,7 +95,28 @@ export const useSimulationSocket = (url: string) => {
       const data = JSON.parse(event.data);
       const timestamp = new Date().toLocaleTimeString([], { hour12: false });
 
-      if (data.type === 'heat_update') {
+      if (data.type === 'ping') {
+        socket.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+
+      if (data.type === 'presence_update') {
+        setPresenceList(data.players || []);
+      } else if (data.type === 'player_joined') {
+        setLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          type: 'system',
+          text: `Operator ${data.player.username} (${data.player.role}) connected to this terminal session.`,
+          timestamp
+        }]);
+      } else if (data.type === 'player_left') {
+        setLogs(prev => [...prev, {
+          id: Date.now().toString(),
+          type: 'system',
+          text: `Operator ${data.player.username} disconnected from this session.`,
+          timestamp
+        }]);
+      } else if (data.type === 'heat_update') {
         setHeat(data.value);
       } else if (data.type === 'reality_patch') {
         setStability(data.stability);
@@ -244,6 +292,7 @@ export const useSimulationSocket = (url: string) => {
     isConnected, 
     activeAttack, 
     world, 
+    presenceList,
     sendCommand, 
     updateWorldParameter, 
     spawnAgent,

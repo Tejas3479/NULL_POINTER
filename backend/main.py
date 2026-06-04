@@ -7,7 +7,7 @@ from backend.utils.source_reader import get_random_snippet
 from backend.agents.hive_mind import hive_mind_app
 from backend.services.sandbox_executor import router as sandbox_router
 from backend.services.world_store import world_store, utc_now
-from backend.auth.oauth2 import get_current_user, require_role, create_session_token, verify_external_jwt, SESSION_COOKIE_NAME
+from backend.auth.oauth2 import get_current_user, require_role, create_session_token, verify_external_jwt, SESSION_COOKIE_NAME, verify_clerk_token
 from backend.models.user import User, UserRole
 from backend.services.user_store import user_store
 from pydantic import BaseModel, Field, model_validator
@@ -319,6 +319,14 @@ async def mock_login(payload: LoginRequest, response: Response):
         secure=cookie_kwargs["secure"],
         max_age=3600
     )
+    response.set_cookie(
+        key="jwt_token",
+        value=session_jwt,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     
     return {
         "status": "success",
@@ -392,6 +400,14 @@ async def github_callback(code: str, response: Response):
         secure=cookie_kwargs["secure"],
         max_age=3600
     )
+    redirect_res.set_cookie(
+        key="jwt_token",
+        value=session_jwt,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     return redirect_res
 
 @app.get("/auth/callback/google")
@@ -453,6 +469,14 @@ async def google_callback(code: str, response: Response):
         secure=cookie_kwargs["secure"],
         max_age=3600
     )
+    redirect_res.set_cookie(
+        key="jwt_token",
+        value=session_jwt,
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"],
+        max_age=3600
+    )
     return redirect_res
 
 @app.post("/auth/logout")
@@ -465,6 +489,12 @@ async def logout(response: Response):
     )
     response.delete_cookie(
         key="csrf_token",
+        httponly=False,
+        samesite="lax",
+        secure=cookie_kwargs["secure"]
+    )
+    response.delete_cookie(
+        key="jwt_token",
         httponly=False,
         samesite="lax",
         secure=cookie_kwargs["secure"]
@@ -616,13 +646,57 @@ async def fork_snapshot(id: str, current_user: User = Depends(get_current_user))
         raise HTTPException(status_code=500, detail=f"Failed to fork snapshot: {str(e)}")
 
 @app.websocket("/ws/heat")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    world_id: str = "local-null-pointer",
+    token: Optional[str] = None
+):
+    # Verify Clerk JWT Token
+    user_info = {"username": "anonymous-operator", "role": "viewer"}
+    if token:
+        try:
+            decoded = verify_clerk_token(token)
+            username = decoded.get("username") or decoded.get("email") or decoded.get("sub", "operator")
+            if "@" in username:
+                username = username.split("@")[0]
+            role = decoded.get("role") or decoded.get("metadata", {}).get("role", "developer")
+            user_info = {
+                "username": username,
+                "role": role
+            }
+        except Exception as e:
+            print(f"WS authentication failed: {e}")
+            await websocket.close(code=4003)
+            return
+
     await manager.connect(websocket)
+    
+    # Store user metadata
+    if websocket in manager.metadata:
+        manager.metadata[websocket]["user"] = user_info
+        
+    manager.join_room(world_id, websocket)
+
+    # Broadcast player_joined and presence_update to the room
+    await manager.broadcast_to_room(world_id, {
+        "type": "player_joined",
+        "player": user_info
+    })
+    await manager.broadcast_to_room(world_id, {
+        "type": "presence_update",
+        "players": manager.get_room_presence(world_id)
+    })
+
     try:
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
             
+            if message.get("type") == "pong":
+                if websocket in manager.metadata:
+                    manager.metadata[websocket]["last_pong"] = time.time()
+                continue
+                
             if message.get("type") == "debug_command":
                 command = message.get("command", "")
                 print(f"--- PLAYER COMMAND RECEIVED: {command} ---")
@@ -630,14 +704,25 @@ async def websocket_endpoint(websocket: WebSocket):
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        await manager.broadcast_to_room(world_id, {
+            "type": "player_left",
+            "player": user_info
+        })
+        await manager.broadcast_to_room(world_id, {
+            "type": "presence_update",
+            "players": manager.get_room_presence(world_id)
+        })
 
 async def handle_debug_command(command: str, websocket: WebSocket):
     lowered = command.lower().strip()
+    meta = manager.metadata.get(websocket, {})
+    world_id = meta.get("world_id", "local-null-pointer")
+    
     if lowered.startswith("spawn "):
         archetype_id = lowered.split(" ", 1)[1].strip()
         try:
             agent = world_store.spawn_agent(archetype_id)
-            await manager.broadcast({"type": "agent_spawned", "agent": agent, "world": world_store.snapshot()})
+            await manager.broadcast_to_room(world_id, {"type": "agent_spawned", "agent": agent, "world": world_store.snapshot()})
         except ValueError:
             await manager.send_personal_message(json.dumps({
                 "type": "admin_response",
@@ -650,7 +735,7 @@ async def handle_debug_command(command: str, websocket: WebSocket):
         if len(parts) == 3:
             try:
                 world = world_store.update_parameters({parts[1]: float(parts[2])})
-                await manager.broadcast({"type": "world_update", "world": world})
+                await manager.broadcast_to_room(world_id, {"type": "world_update", "world": world})
                 return
             except ValueError:
                 pass
@@ -776,15 +861,28 @@ Your output must be ONLY the raw, complete executable Python code.
 @app.post("/v1/simulation/patch")
 async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(get_current_user)):
     """Player attempts to 'reinforce' the code with a semantic description or custom code."""
-    if not active_attack["vulnerability"]:
-        return {"error": "No active attack to patch."}
+    world_id = world_store.state["world_id"] if world_store.state else "local-null-pointer"
     
+    if not active_attack["vulnerability"]:
+        return {
+            "status": "failed",
+            "message": "Vulnerability already patched",
+            "verdict": {
+                "accepted": False,
+                "score": 0,
+                "reason": "Vulnerability already patched by another operator.",
+                "diff": "",
+                "sandbox_trace": {}
+            }
+        }
+        
+    target_vuln = active_attack["vulnerability"]
     description = payload.description
     code = payload.code
     player_id = payload.player_id
     
     if description and not (code and code.strip()):
-        patch_code = await generate_code_from_description(description, active_attack["vulnerability"])
+        patch_code = await generate_code_from_description(description, target_vuln)
         language = "python"
     else:
         patch_code = code or description
@@ -792,10 +890,18 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
         
     verdict = await world_store.accept_patch(
         patch_code=patch_code,
-        vulnerability=active_attack["vulnerability"],
+        vulnerability=target_vuln,
         language=language,
         player_id=player_id,
     )
+    
+    # Optimistic concurrency check: make sure another operator didn't patch it while we were evaluating
+    if not active_attack["vulnerability"] or active_attack["vulnerability"] != target_vuln:
+        return {
+            "status": "failed",
+            "message": "Vulnerability already patched",
+            "verdict": verdict,
+        }
         
     if verdict["accepted"]:
         if active_attack["timer_task"]:
@@ -810,7 +916,7 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
         
         active_attack["vulnerability"] = None
         
-        await manager.broadcast({
+        await manager.broadcast_to_room(world_id, {
             "type": "attack_result",
             "status": "success",
             "message": f"SYNTAX_SHIELD_ACTIVATED: {verdict['reason']}",
@@ -826,11 +932,150 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
         }
     else:
         world_store.append_event("patch_rejected", "Operator patch rejected.", verdict)
+        await manager.broadcast_to_room(world_id, {
+            "type": "attack_result",
+            "status": "failed",
+            "message": f"PATCH_INSUFFICIENT ({verdict['score']}): {verdict['reason']}",
+            "verdict": verdict,
+        })
         return {
             "status": "failed",
             "message": f"PATCH_INSUFFICIENT ({verdict['score']}): {verdict['reason']}",
             "verdict": verdict,
         }
+
+class ShareRequest(BaseModel):
+    public: bool
+    remixable: Optional[bool] = False
+
+@app.post("/v1/simulation/share")
+async def share_world(payload: ShareRequest, current_user: User = Depends(get_current_user)):
+    """Sets simulation world public sharing settings."""
+    if not world_store.state:
+        raise HTTPException(status_code=404, detail="World not found")
+        
+    world_store.state["share"]["public"] = payload.public
+    world_store.state["share"]["remixable"] = payload.remixable
+    world_store.save()
+    
+    # Broadcast updated world state to all connected operators/spectators in the room
+    world_id = world_store.state["world_id"]
+    await manager.broadcast_to_room(world_id, {
+        "type": "world_update",
+        "world": world_store.snapshot()
+    })
+    
+    return {"status": "success", "share": world_store.state["share"]}
+
+@app.get("/v1/simulation/{world_id}/badge.svg")
+async def get_badge(world_id: str):
+    """Generates and returns an SVG badge with live world stability and agent count."""
+    stability = 100
+    agent_count = 0
+    
+    # Try loading world state
+    if world_store.state and world_store.state.get("world_id") == world_id:
+        stability = world_store.state.get("stability", 100)
+        agent_count = len([a for a in world_store.state.get("agents", []) if a.get("active")])
+    elif world_store.supabase:
+        try:
+            res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
+            if res.data:
+                state = res.data[0]["state"]
+                stability = state.get("stability", 100)
+                agent_count = len([a for a in state.get("agents", []) if a.get("active")])
+        except Exception:
+            pass
+
+    # Dynamic color based on stability
+    color = "#22c55e"  # emerald
+    if stability < 40:
+        color = "#ef4444"  # red
+    elif stability < 75:
+        color = "#f59e0b"  # amber
+
+    svg_content = f"""<svg xmlns="http://www.w3.org/2000/svg" width="220" height="20">
+  <rect width="220" height="20" rx="3" fill="#0b0f19" stroke="#1e293b" stroke-width="1"/>
+  <text x="10" y="14" fill="#8b949e" font-family="monospace" font-size="10" font-weight="bold">NULL_POINTER</text>
+  <rect x="90" y="3" width="70" height="14" rx="2" fill="#1e293b"/>
+  <text x="95" y="13" fill="{color}" font-family="monospace" font-size="9" font-weight="bold">STB: {stability}%</text>
+  <rect x="165" y="3" width="48" height="14" rx="2" fill="#1e293b"/>
+  <text x="170" y="13" fill="#38bdf8" font-family="monospace" font-size="9" font-weight="bold">AGT: {agent_count}</text>
+</svg>"""
+    return Response(content=svg_content, media_type="image/svg+xml", headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    })
+
+@app.websocket("/ws/spectate/{world_id}")
+async def websocket_spectate_endpoint(websocket: WebSocket, world_id: str):
+    """WebSocket spectate endpoint requiring no authentication. Read-only room routing."""
+    # Check if world is public
+    world_state = None
+    if world_store.state and world_store.state.get("world_id") == world_id:
+        world_state = world_store.state
+    elif world_store.supabase:
+        try:
+            res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
+            if res.data:
+                world_state = res.data[0]["state"]
+        except Exception:
+            pass
+            
+    if not world_state:
+        await websocket.close(code=4004) # Not found
+        return
+
+    share = world_state.get("share", {})
+    if not share.get("public"):
+        await websocket.close(code=4003) # Forbidden spectate
+        return
+
+    await manager.connect(websocket)
+    
+    # Increment view count
+    if world_store.state and world_store.state.get("world_id") == world_id:
+        world_store.state["view_count"] = world_store.state.get("view_count", 0) + 1
+        world_store.save()
+        await manager.broadcast_to_room(world_id, {
+            "type": "world_update",
+            "world": world_store.snapshot()
+        })
+    elif world_store.supabase:
+        try:
+            world_state["view_count"] = world_state.get("view_count", 0) + 1
+            world_store.supabase.table("simulation_worlds").update({
+                "state": world_state,
+                "updated_at": utc_now()
+            }).eq("world_id", world_id).execute()
+        except Exception:
+            pass
+
+    user_info = {"username": "Spectator", "role": "spectator"}
+    if websocket in manager.metadata:
+        manager.metadata[websocket]["user"] = user_info
+        
+    manager.join_room(world_id, websocket)
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+            
+            if message.get("type") == "pong":
+                if websocket in manager.metadata:
+                    manager.metadata[websocket]["last_pong"] = time.time()
+                continue
+                
+            if message.get("type") == "debug_command":
+                await manager.send_personal_message(json.dumps({
+                    "type": "admin_response",
+                    "message": "SPECTATOR_ALERT: COMMAND_BLOCKED | ACTION: READ_ONLY_SESSION"
+                }), websocket)
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @app.get("/v1/simulation/graph")
 async def get_simulation_graph(current_user: User = Depends(get_current_user)):

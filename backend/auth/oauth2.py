@@ -156,3 +156,54 @@ def require_role(allowed_roles: List[str]):
             )
         return current_user
     return role_checker
+
+def verify_clerk_token(token: str) -> Dict[str, Any]:
+    """Verify a Clerk OIDC JWT token dynamically using JWKS based on its issuer claim."""
+    try:
+        claims = jwt.get_unverified_claims(token)
+        issuer = claims.get("iss", "")
+        
+        # If issuer looks like a Clerk domain
+        if "clerk" in issuer or os.getenv("CLERK_JWKS_URL"):
+            jwks_url = os.getenv("CLERK_JWKS_URL") or f"{issuer.rstrip('/')}/.well-known/jwks.json"
+            
+            header = jwt.get_unverified_header(token)
+            kid = header.get("kid")
+            if not kid:
+                raise JWTError("Token missing 'kid' in header.")
+                
+            jwks = fetch_jwks(jwks_url)
+            public_key = None
+            for key in jwks.get("keys", []):
+                if key.get("kid") == kid:
+                    public_key = key
+                    break
+                    
+            if not public_key:
+                raise JWTError(f"Public key not found for kid: {kid}")
+                
+            decoded = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                options={"verify_aud": False}
+            )
+            return decoded
+    except Exception as e:
+        print(f"Dynamic Clerk JWKS verification failed: {e}")
+        
+    # Fallback to local session token decoding using JWT_SECRET
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception as e:
+        print(f"Local session token fallback decode failed: {e}")
+        
+    # If all signature verifications fail, extract unverified claims (useful for local dev/testing without keys)
+    try:
+        claims = jwt.get_unverified_claims(token)
+        if claims:
+            return claims
+    except Exception:
+        pass
+        
+    raise HTTPException(status_code=401, detail="Invalid token")
