@@ -6,7 +6,7 @@ from backend.utils.websocket_manager import manager
 from backend.utils.source_reader import get_random_snippet
 from backend.agents.hive_mind import hive_mind_app
 from backend.services.sandbox_executor import router as sandbox_router
-from backend.services.world_store import world_store
+from backend.services.world_store import world_store, utc_now
 from backend.auth.oauth2 import get_current_user, require_role, create_session_token, verify_external_jwt, SESSION_COOKIE_NAME
 from backend.models.user import User, UserRole
 from backend.services.user_store import user_store
@@ -18,48 +18,74 @@ from dotenv import load_dotenv
 import os
 import json
 import random
-load_dotenv()
+import uuid
+from backend.services.simulation_clock import SimulationClock
+from backend.services.snapshot_store import SnapshotStore
 
 active_attack = {
     "vulnerability": None,
     "timer_task": None
 }
 
+sim_clock = SimulationClock()
+snapshot_store = SnapshotStore(world_store.supabase)
+
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create background tasks
+    # Startup: Create/load the persistent world
+    world_store.create_or_load_world("local-null-pointer")
+    
+    # Create background tasks
     heat_task = asyncio.create_task(broadcast_heat_updates())
     ghost_task = asyncio.create_task(run_ghost_cycle())
+    sim_clock.start()
     yield
     # Shutdown
     heat_task.cancel()
     ghost_task.cancel()
+    sim_clock.stop()
 
 async def run_ghost_cycle():
-    """Background task that runs the Hive Mind agent cycle every 30 seconds."""
+    """Background task that runs the Hive Mind agent cycle every Nth tick."""
+    hive_interval = int(os.getenv("HIVE_MIND_TICK_INTERVAL", "6"))
+    snapshot = world_store.snapshot() or {}
     current_state = {
-        "stability_score": world_store.snapshot()["stability"],
+        "stability_score": snapshot.get("stability", 100),
         "active_anomalies": [],
         "simulation_logs": ["HIVE_MIND_AWAKENED"],
         "revision_count": 0,
         "decision": ""
     }
     
+    last_processed_tick = -1
     while True:
         try:
+            await sim_clock._tick_event.wait()
+            if sim_clock._tick_count == last_processed_tick:
+                await asyncio.sleep(0.01)
+                continue
+            
+            last_processed_tick = sim_clock._tick_count
+            if last_processed_tick % hive_interval != 0:
+                continue
+                
             print("--- SIMULATION HEARTBEAT: HIVE_MIND AWAKENING ---")
             # Invoke the LangGraph Hive Mind
             result = await hive_mind_app.ainvoke(current_state)
             
             # Update metrics
             stability = result.get("stability_score", random.randint(30, 95))
-            simulation_state["stability"] = stability
             agent_source = result.get("agent_source", "UNKNOWN")
             patch = result.get("proposed_patch", "SIMULATION_DRIFT_DETECTED")
+            
             world_store.remember_patch(agent_source, patch, stability - current_state["stability_score"])
-            world = world_store.advance_tick(stability=stability, heat=simulation_state["heat"])
+            
+            # Update stability in world_store.state and save (no double-ticking!)
+            if world_store.state:
+                world_store.state["stability"] = max(0, min(100, int(stability)))
+                world_store.save()
             
             # Broadcast the Hive Mind's decision
             await manager.broadcast({
@@ -67,17 +93,20 @@ async def run_ghost_cycle():
                 "stability": stability,
                 "agent": agent_source,
                 "patch": patch,
-                "world": world,
+                "world": world_store.snapshot(),
                 "logs": [f"[{agent_source}] REWRITING_REALITY: {patch[:50]}..."]
             })
             
             # Update for next cycle
             current_state["stability_score"] = stability
-            await asyncio.sleep(30)
             
+        except asyncio.CancelledError:
+            break
         except Exception as e:
             print(f"!!! HIVE_MIND CRITICAL ERROR: {e} !!!")
-            await asyncio.sleep(10)
+            await asyncio.sleep(5)
+
+
 
 app = FastAPI(title="NULL_POINTER API", lifespan=lifespan)
 app.include_router(sandbox_router, dependencies=[Depends(get_current_user)])
@@ -197,6 +226,9 @@ class ApplyPatchRequest(SafeBaseModel):
     code: Optional[str] = ""
     player_id: Optional[str] = "local-player"
     language: Optional[str] = "python"
+
+class TickSpeedRequest(SafeBaseModel):
+    tick_interval_ms: int = Field(..., ge=500, le=60000)
 
 @app.post("/auth/login")
 async def mock_login(payload: LoginRequest, response: Response):
@@ -426,20 +458,32 @@ async def analyze_code(payload: dict, current_user: User = Depends(get_current_u
         "role": current_user.role.value
     }
 
-simulation_state = {
-    "heat": world_store.snapshot()["heat"],
-    "stability": world_store.snapshot()["stability"], # Linked to Ghost Engine
-    "status": "idle",
-    "logs": []
-}
+def get_current_state() -> dict:
+    snapshot = world_store.snapshot() or {}
+    return {
+        "heat": snapshot.get("heat", 0.0),
+        "stability": snapshot.get("stability", 100),
+        "status": snapshot.get("status", "idle"),
+        "logs": []
+    }
 
 @app.get("/")
 async def health_check():
-    return {"status": "alive", "simulation": simulation_state["status"]}
+    return {"status": "alive", "simulation": get_current_state()["status"]}
 
 @app.get("/v1/simulation/world")
 async def get_world(current_user: User = Depends(get_current_user)):
     return world_store.snapshot()
+
+@app.get("/v1/supabase/health")
+async def supabase_health():
+    if not world_store.supabase:
+        return {"connected": False}
+    try:
+        world_store.supabase.table("simulation_worlds").select("world_id").limit(1).execute()
+        return {"connected": True}
+    except Exception:
+        return {"connected": False}
 
 @app.post("/v1/simulation/world/parameters")
 async def update_world_parameters(payload: UpdateWorldParametersRequest, current_user: User = Depends(require_role(["admin"]))):
@@ -458,6 +502,88 @@ async def spawn_agent(payload: SpawnAgentRequest, current_user: User = Depends(g
         "message": f"{agent['name']} entered the simulation."
     })
     return {"agent": agent, "world": world}
+
+@app.post("/v1/simulation/tick/speed")
+async def set_tick_speed(payload: TickSpeedRequest, current_user: User = Depends(require_role(["admin"]))):
+    sim_clock.set_interval(payload.tick_interval_ms)
+    return {"tick_interval_ms": sim_clock._interval_ms}
+
+@app.post("/v1/simulation/snapshot")
+async def create_snapshot(current_user: User = Depends(get_current_user)):
+    if not world_store.state:
+        raise HTTPException(status_code=400, detail="No active world state to snapshot")
+    world_id = world_store.state["world_id"]
+    tick = world_store.state["tick"]
+    state = world_store.snapshot()
+    
+    try:
+        result = snapshot_store.create_snapshot(world_id, tick, state)
+        result["snapshot_id"] = result["id"]
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create snapshot: {str(e)}")
+
+@app.get("/v1/simulation/snapshots")
+async def list_snapshots(current_user: User = Depends(get_current_user)):
+    if not world_store.state:
+        raise HTTPException(status_code=400, detail="No active world state")
+    world_id = world_store.state["world_id"]
+    try:
+        snapshots = snapshot_store.list_snapshots(world_id)
+        return snapshots
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list snapshots: {str(e)}")
+
+@app.post("/v1/simulation/snapshot/{id}/restore")
+async def restore_snapshot(id: str, current_user: User = Depends(get_current_user)):
+    try:
+        snapshot = snapshot_store.get_snapshot(id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    
+    try:
+        merged_state = world_store._merge_defaults(snapshot["state_jsonb"])
+        world_store.state = merged_state
+        world_store.save()
+        
+        await manager.broadcast({
+            "type": "world_update",
+            "world": merged_state
+        })
+        return merged_state
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore snapshot: {str(e)}")
+
+@app.post("/v1/simulation/snapshot/{id}/fork")
+async def fork_snapshot(id: str, current_user: User = Depends(get_current_user)):
+    try:
+        snapshot = snapshot_store.get_snapshot(id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+        
+    fork_world_id = f"fork-{uuid.uuid4().hex[:8]}"
+    
+    try:
+        from copy import deepcopy
+        
+        new_state = deepcopy(snapshot["state_jsonb"])
+        new_state["world_id"] = fork_world_id
+        
+        world_store.supabase.table("simulation_worlds").insert({
+            "world_id": fork_world_id,
+            "state": new_state,
+            "updated_at": utc_now()
+        }).execute()
+        
+        return {"fork_world_id": fork_world_id, "world_id": fork_world_id, "world": new_state}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fork snapshot: {str(e)}")
 
 @app.websocket("/ws/heat")
 async def websocket_endpoint(websocket: WebSocket):
@@ -514,14 +640,17 @@ async def broadcast_heat_updates():
         base_heat = (math.sin(time.time() / 10) + 1) * 20
         
         # Stability influence (low stability = high heat)
-        instability_factor = (100 - simulation_state["stability"]) * 0.8
+        current_stability = world_store.state.get("stability", 100) if world_store.state else 100
+        instability_factor = (100 - current_stability) * 0.8
         
-        simulation_state["heat"] = min(100, base_heat + instability_factor)
-        world_store.state["heat"] = simulation_state["heat"]
+        heat_val = min(100.0, base_heat + instability_factor)
+        if world_store.state:
+            world_store.state["heat"] = heat_val
+            world_store.save()
         
         await manager.broadcast({
             "type": "heat_update",
-            "value": round(simulation_state["heat"], 2),
+            "value": round(heat_val, 2),
             "timestamp": time.time()
         })
         await asyncio.sleep(1)
@@ -556,22 +685,21 @@ async def initiate_attack(current_user: User = Depends(get_current_user)):
 async def attack_timer():
     try:
         await asyncio.sleep(10)
-        if active_attack["vulnerability"]:
+        if active_attack["vulnerability"] and world_store.state:
             # Attack succeeded (player failed to patch)
-            simulation_state["stability"] = max(0, simulation_state["stability"] - 15)
-            world_store.state["stability"] = simulation_state["stability"]
+            new_stability = max(0, world_store.state.get("stability", 100) - 15)
+            new_heat = min(100.0, world_store.state.get("heat", 0.0) + 15)
             
-            simulation_state["heat"] = min(100, simulation_state["heat"] + 15)
-            world_store.state["heat"] = simulation_state["heat"]
-            
+            world_store.state["stability"] = new_stability
+            world_store.state["heat"] = new_heat
             world_store.save()
             
             await manager.broadcast({
                 "type": "attack_result",
                 "status": "failed",
                 "message": "DEFENSE_BREACHED: Stability dropped by 15%!",
-                "new_heat": simulation_state["heat"],
-                "new_stability": simulation_state["stability"],
+                "new_heat": new_heat,
+                "new_stability": new_stability,
                 "world": world_store.snapshot()
             })
             active_attack["vulnerability"] = None
@@ -621,8 +749,8 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
             active_attack["timer_task"] = None
         
         # Restore and reward stability
-        simulation_state["stability"] = min(100, simulation_state["stability"] + 15)
-        world_store.state["stability"] = simulation_state["stability"]
+        new_stability = min(100, world_store.state.get("stability", 100) + 15)
+        world_store.state["stability"] = new_stability
         world_store.append_event("patch_accepted", "Operator patch accepted.", verdict)
         world_store.save()
         
@@ -632,7 +760,7 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
             "type": "attack_result",
             "status": "success",
             "message": f"SYNTAX_SHIELD_ACTIVATED: {verdict['reason']}",
-            "new_stability": simulation_state["stability"],
+            "new_stability": new_stability,
             "world": world_store.snapshot(),
         })
         
@@ -666,11 +794,6 @@ async def reset_simulation(current_user: User = Depends(get_current_user)):
         active_attack["timer_task"].cancel()
         active_attack["timer_task"] = None
         
-    # Reset local simulation state
-    simulation_state["heat"] = 0.0
-    simulation_state["stability"] = 100
-    simulation_state["status"] = "idle"
-    
     # Broadcast reset to all WebSocket connections
     await manager.broadcast({
         "type": "world_update",

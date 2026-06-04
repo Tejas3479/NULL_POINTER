@@ -19,7 +19,7 @@ from backend.services.sandbox_executor import execute_code
 
 load_dotenv()
 
-WORLD_PATH = Path(__file__).resolve().parents[1] / "data" / "world_state.json"
+# WORLD_PATH = Path(__file__).resolve().parents[1] / "data" / "world_state.json"
 
 BASE_ARCHETYPES: List[Dict[str, Any]] = [
     {
@@ -142,10 +142,13 @@ def utc_now() -> str:
 
 
 class WorldStore:
-    def __init__(self, path: Path = WORLD_PATH):
+    def __init__(self, path: Optional[Path] = None):
         self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # if self.path:
+        #     self.path.parent.mkdir(parents=True, exist_ok=True)
         self.supabase = self._connect_supabase()
+        if self.supabase is None:
+            raise RuntimeError("Supabase connection required for persistent simulation. Set SUPABASE_URL and SUPABASE_KEY.")
         self.state = self._load()
 
     def _connect_supabase(self) -> Optional[Client]:
@@ -159,33 +162,79 @@ class WorldStore:
             return None
 
     def _load(self) -> Dict[str, Any]:
-        remote = self._load_from_supabase()
-        if remote:
-            return self._merge_defaults(remote)
-        if not self.path.exists():
-            return deepcopy(BASE_WORLD)
-        try:
-            loaded = json.loads(self.path.read_text(encoding="utf-8"))
-            return self._merge_defaults(loaded)
-        except Exception:
-            return deepcopy(BASE_WORLD)
+        # remote = self._load_from_supabase()
+        # if remote:
+        #     return self._merge_defaults(remote)
+        # if not self.path.exists():
+        #     return deepcopy(BASE_WORLD)
+        # try:
+        #     loaded = json.loads(self.path.read_text(encoding="utf-8"))
+        #     return self._merge_defaults(loaded)
+        # except Exception:
+        #     return deepcopy(BASE_WORLD)
+        return None
 
     def _load_from_supabase(self) -> Optional[Dict[str, Any]]:
         if not self.supabase:
             return None
-        try:
-            result = (
-                self.supabase.table("simulation_worlds")
-                .select("state")
-                .eq("world_id", BASE_WORLD["world_id"])
-                .limit(1)
-                .execute()
-            )
-            if result.data:
-                return result.data[0].get("state")
-        except Exception:
-            return None
+        
+        import time
+        attempts = 3
+        for attempt in range(attempts):
+            try:
+                result = (
+                    self.supabase.table("simulation_worlds")
+                    .select("state")
+                    .eq("world_id", BASE_WORLD["world_id"])
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    return result.data[0].get("state")
+                return None
+            except Exception:
+                if attempt < attempts - 1:
+                    time.sleep(1)
+                else:
+                    return None
         return None
+
+    def create_or_load_world(self, world_id: str) -> Dict[str, Any]:
+        if not self.supabase:
+            raise RuntimeError("Supabase connection required for persistent simulation. Set SUPABASE_URL and SUPABASE_KEY.")
+        
+        import time
+        attempts = 3
+        last_error = None
+        for attempt in range(attempts):
+            try:
+                result = (
+                    self.supabase.table("simulation_worlds")
+                    .select("state")
+                    .eq("world_id", world_id)
+                    .limit(1)
+                    .execute()
+                )
+                if result.data:
+                    self.state = self._merge_defaults(result.data[0].get("state"))
+                    return self.state
+                else:
+                    new_state = deepcopy(BASE_WORLD)
+                    new_state["world_id"] = world_id
+                    
+                    self.supabase.table("simulation_worlds").insert({
+                        "world_id": world_id,
+                        "state": new_state,
+                        "updated_at": utc_now()
+                    }).execute()
+                    self.state = new_state
+                    return self.state
+            except Exception as e:
+                last_error = e
+                if attempt < attempts - 1:
+                    time.sleep(1)
+                else:
+                    raise last_error
 
     def _merge_defaults(self, loaded: Dict[str, Any]) -> Dict[str, Any]:
         state = deepcopy(BASE_WORLD)
@@ -199,7 +248,8 @@ class WorldStore:
         return state
 
     def save(self) -> None:
-        self.path.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
+        # if self.path:
+        #     self.path.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
         if self.supabase:
             try:
                 self.supabase.table("simulation_worlds").upsert(
