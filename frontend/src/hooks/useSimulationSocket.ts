@@ -24,7 +24,7 @@ export interface SimulationWorld {
   factions: Array<{ id: string; name: string; territory: number; influence: number; stance: string }>;
   anomalies: Array<{ id: string; name: string; x: number; y: number; z: number; severity: number; faction: string }>;
   agent_archetypes: Array<{ id: string; name: string; role: string; temperament: string; unlocked: boolean }>;
-  agents: Array<{ id: string; archetype_id: string; name: string; loyalty: string; mood: string; memory: string[]; active: boolean }>;
+  agents: Array<{ id: string; archetype_id: string; name: string; loyalty: string; mood: string; memory: string[]; active: boolean; biography?: string }>;
   lore: Array<{ id: string; title: string; body: string; tick: number }>;
   events: Array<{ id: string; kind: string; message: string; tick: number; created_at: string }>;
 }
@@ -202,14 +202,16 @@ export const useSimulationSocket = (url: string) => {
     if (result.world) setWorld(result.world);
   }, [apiBase]);
 
-  const resetSimulation = useCallback(async () => {
+  const resetSimulation = useCallback(async (seedAgents?: Record<string, number>) => {
     try {
       const res = await fetch(`${apiBase}/v1/simulation/reset`, {
         method: 'POST',
         credentials: 'include',
         headers: { 
+          'Content-Type': 'application/json',
           'X-CSRF-Token': getCsrfToken()
-        }
+        },
+        body: JSON.stringify({ seed_agents: seedAgents })
       });
       const result = await res.json();
       if (result.world) setWorld(result.world);

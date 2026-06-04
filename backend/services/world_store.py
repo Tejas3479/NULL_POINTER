@@ -21,53 +21,7 @@ load_dotenv()
 
 # WORLD_PATH = Path(__file__).resolve().parents[1] / "data" / "world_state.json"
 
-BASE_ARCHETYPES: List[Dict[str, Any]] = [
-    {
-        "id": "disruptor",
-        "name": "The Disruptor",
-        "role": "Entropy physicist",
-        "temperament": "reckless, impatient, fascinated by broken natural laws",
-        "prompt": "Maximize simulation entropy through physics, gravity, heat, and hardware instability.",
-        "unlocked": True,
-        "discovered_by": "bootstrap",
-    },
-    {
-        "id": "architect",
-        "name": "The Architect",
-        "role": "Code structure analyst",
-        "temperament": "precise, suspicious, obsessed with structural leverage",
-        "prompt": "Analyze source vulnerabilities and propose targeted backend or frontend reality patches.",
-        "unlocked": True,
-        "discovered_by": "bootstrap",
-    },
-    {
-        "id": "prophet",
-        "name": "The Prophet",
-        "role": "Lore signal interpreter",
-        "temperament": "cryptic, loyal to the Ghost, drawn to forbidden memory",
-        "prompt": "Grow NPC awareness, myths, rituals, and persistent simulation lore.",
-        "unlocked": True,
-        "discovered_by": "bootstrap",
-    },
-    {
-        "id": "cartographer",
-        "name": "The Cartographer",
-        "role": "Territory mapper",
-        "temperament": "watchful, patient, territorial",
-        "prompt": "Map faction borders, anomaly hotspots, and movement through simulation space.",
-        "unlocked": False,
-        "discovered_by": None,
-    },
-    {
-        "id": "mediator",
-        "name": "The Mediator",
-        "role": "Agent diplomat",
-        "temperament": "careful, persuasive, quietly ambitious",
-        "prompt": "Broker alliances, betrayals, and social communication between agents.",
-        "unlocked": False,
-        "discovered_by": None,
-    },
-]
+from backend.agents.archetypes import ARCHETYPES as BASE_ARCHETYPES
 
 BASE_WORLD: Dict[str, Any] = {
     "world_id": "local-null-pointer",
@@ -348,6 +302,17 @@ class WorldStore:
             raise ValueError("Unknown archetype")
         archetype["unlocked"] = True
         archetype["discovered_by"] = archetype.get("discovered_by") or "operator"
+        
+        # Generate dynamic unique biography
+        birthplaces = ["sector 7G", "the heap allocation pool", "an unmapped memory register", "the main thread execution branch", "a garbage collection routine"]
+        motivations = ["aims to uncover the secret ghost signal", "wants to purify the thread cache", "strives to break structural inheritance limits", "seeks the ultimate None dereference", "protects critical network loops"]
+        quirks = ["speaks only in hexadecimal logs", "constantly drifts telemetry metrics", "retains memories across heap resets", "distrusts the system integrity critic", "filters code inputs aggressively"]
+        
+        birth = random.choice(birthplaces)
+        motivation = random.choice(motivations)
+        quirk = random.choice(quirks)
+        biography = f"Compiled in {birth}. A {archetype['role'].lower()} with a {archetype['temperament'].lower()} nature. They {motivation} and {quirk}."
+
         agent = {
             "id": f"agent-{uuid.uuid4().hex[:8]}",
             "archetype_id": archetype_id,
@@ -355,11 +320,13 @@ class WorldStore:
             "loyalty": random.choice(["kernel", "ghost", "operators"]),
             "mood": random.choice(["curious", "guarded", "volatile", "focused", "reverent"]),
             "memory": [f"Spawned by operator at tick {self.state['tick']}."],
-            "relationships": {existing["id"]: random.randint(-20, 20) for existing in self.state["agents"]},
+            "biography": biography,
             "active": True,
         }
-        for existing in self.state["agents"]:
-            existing.setdefault("relationships", {})[agent["id"]] = random.randint(-20, 20)
+        
+        from backend.services.social_graph import initialize_relationships
+        initialize_relationships(agent, self.state["agents"])
+        
         self.state["agents"].append(agent)
         self.append_event("agent_spawned", f"{agent['name']} entered the simulation.", {"agent_id": agent["id"]})
         self.save()

@@ -230,6 +230,9 @@ class ApplyPatchRequest(SafeBaseModel):
 class TickSpeedRequest(SafeBaseModel):
     tick_interval_ms: int = Field(..., ge=500, le=60000)
 
+class ResetRequest(SafeBaseModel):
+    seed_agents: Optional[Dict[str, int]] = Field(default=None)
+
 @app.post("/auth/login")
 async def mock_login(payload: LoginRequest, response: Response):
     code = payload.code
@@ -778,15 +781,34 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
             "verdict": verdict,
         }
 
+@app.get("/v1/simulation/graph")
+async def get_simulation_graph(current_user: User = Depends(get_current_user)):
+    """Returns nodes and edges of the agent social relationship graph for visualization."""
+    from backend.services.social_graph import get_graph_data
+    return get_graph_data()
+
 @app.post("/v1/simulation/reset")
-async def reset_simulation(current_user: User = Depends(get_current_user)):
+async def reset_simulation(payload: Optional[ResetRequest] = None, current_user: User = Depends(get_current_user)):
     """Resets the entire simulation to the base world state, clears active attacks, and broadcasts state updates."""
     from copy import deepcopy
     from backend.services.world_store import BASE_WORLD
     
-    # Reset store state
-    world_store.state = deepcopy(BASE_WORLD)
-    world_store.save()
+    # Reset base state
+    new_state = deepcopy(BASE_WORLD)
+    world_store.state = new_state
+    
+    # If seed_agents is provided, override default agents array
+    if payload and payload.seed_agents:
+        world_store.state["agents"] = []
+        for archetype_id, count in payload.seed_agents.items():
+            for _ in range(count):
+                try:
+                    world_store.spawn_agent(archetype_id)
+                except ValueError as e:
+                    print(f"!!! Error seeding agent {archetype_id}: {e} !!!")
+    else:
+        # Save standard reset state
+        world_store.save()
     
     # Reset local active attacks
     active_attack["vulnerability"] = None

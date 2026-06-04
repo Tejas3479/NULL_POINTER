@@ -186,7 +186,7 @@ export function SimulationWorldMap({
               <GitBranch size={14} className="text-cyan-400" />
               Agent Swarm
             </div>
-            <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar pr-1">
               {world.agents.map((agent) => (
                 <div key={agent.id} className="border border-slate-800 bg-black/40 p-2 rounded transition-all hover:border-slate-700">
                   <div className="flex justify-between gap-2 text-xs">
@@ -194,6 +194,11 @@ export function SimulationWorldMap({
                     <span className="text-slate-500 uppercase text-[9px]">{agent.mood}</span>
                   </div>
                   <div className="text-[9px] text-slate-500 uppercase mt-0.5">{agent.loyalty}</div>
+                  {agent.biography && (
+                    <div className="text-[8px] text-slate-400 mt-1 italic border-t border-slate-900/50 pt-1 leading-normal">
+                      {agent.biography}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -201,8 +206,8 @@ export function SimulationWorldMap({
 
           {/* Advanced Spawner Panel */}
           <div className="border-t border-slate-800/60 pt-3">
-            <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-2 font-bold">Deploy Agent Specialist</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-2 font-bold font-orbitron">Deploy Agent Specialist</div>
+            <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto custom-scrollbar pr-1">
               {world.agent_archetypes.map((archetype) => (
                 <button
                   key={archetype.id}

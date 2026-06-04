@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
-import { Activity, Flame, Shield, Cpu, RadioTower } from 'lucide-react';
+import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
 
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
+  const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     // 1. Verify session persistence on mount using httpOnly cookie
@@ -171,10 +172,59 @@ export default function Dashboard() {
           </div>
           
           <div className="space-y-4 flex-1">
-             <ControlButton label="Initialize Loop" active onClick={resetSimulation} />
+             <ControlButton label="Initialize Loop" active onClick={() => resetSimulation()} />
              <ControlButton label="Inject Entropy" onClick={injectEntropy} />
-             <ControlButton label="Hard Reset" destructive onClick={resetSimulation} />
+             <ControlButton label="Hard Reset" destructive onClick={() => resetSimulation()} />
           </div>
+        </div>
+
+        {/* World Builder (Phase 3-B) */}
+        <div className="glass p-5 rounded-lg border border-slate-800/50 flex flex-col">
+          <div className="flex items-center gap-2 mb-4">
+            <GitBranch className="text-emerald-400" size={18} />
+            <h2 className="font-orbitron text-sm font-bold uppercase tracking-widest">World Builder (Phase 3-B)</h2>
+          </div>
+          <p className="text-[9px] uppercase tracking-wider text-slate-500 mb-3 leading-normal">
+            Configure agent swarm initialization counts prior to booting new timeline.
+          </p>
+
+          <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar pr-1 mb-4 border border-slate-900 bg-black/30 p-2 rounded">
+            {world?.agent_archetypes.map((arch) => (
+              <div key={arch.id} className="flex justify-between items-center text-[10px] uppercase font-mono py-1 border-b border-slate-900 last:border-b-0">
+                <span className="text-slate-300 font-bold truncate max-w-[150px]">{arch.name.replace('The ', '')}</span>
+                <div className="flex items-center gap-1.5">
+                  <button 
+                    onClick={() => setSeedCounts(prev => ({ ...prev, [arch.id]: Math.max(0, (prev[arch.id] || 0) - 1) }))}
+                    className="w-4 h-4 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded flex items-center justify-center cursor-pointer text-[9px] font-bold"
+                  >
+                    -
+                  </button>
+                  <span className="w-5 text-center text-white font-orbitron font-bold text-[9px]">
+                    {seedCounts[arch.id] || 0}
+                  </span>
+                  <button 
+                    onClick={() => setSeedCounts(prev => ({ ...prev, [arch.id]: (prev[arch.id] || 0) + 1 }))}
+                    className="w-4 h-4 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded flex items-center justify-center cursor-pointer text-[9px] font-bold"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => {
+              const seedPayload: Record<string, number> = {};
+              Object.entries(seedCounts).forEach(([k, v]) => {
+                if (v > 0) seedPayload[k] = v;
+              });
+              resetSimulation(seedPayload);
+            }}
+            className="w-full py-2.5 border border-emerald-500/30 hover:border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 text-[9px] uppercase tracking-[0.2em] font-orbitron font-bold rounded cursor-pointer transition-all duration-300"
+          >
+            BOOT SWARM WITH CONFIG
+          </button>
         </div>
       </aside>
     </main>
