@@ -12,8 +12,11 @@ import random
 import re
 
 from backend.utils.source_reader import read_source_file
-from backend.services.sandbox_executor import execute_code
+from backend.services.sandbox_executor import execute_code, secure_ast_filter
 from backend.services.world_store import utc_now, world_store
+import ast
+import subprocess
+import sys
 
 load_dotenv()
 
@@ -125,34 +128,168 @@ async def generate_ghost_variant(source: str, findings: List[str]) -> str:
     return extract_candidate_source(response.content)
 
 
-async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
-    """Generate, sandbox, score, and persist a Ghost Engine source variant.
+def run_in_subprocess(code: str, timeout_seconds: int = 5) -> bool:
+    try:
+        p = subprocess.Popen(
+            [sys.executable, "-c", "import sys; exec(sys.stdin.read())"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        try:
+            stdout, stderr = p.communicate(input=code, timeout=timeout_seconds)
+            if p.returncode == 0:
+                return True
+            else:
+                print(f"!!! Subprocess run failed: {stderr} !!!")
+                return False
+        except subprocess.TimeoutExpired:
+            p.kill()
+            print("!!! Subprocess run timed out !!!")
+            return False
+    except Exception as e:
+        print(f"!!! Subprocess execution error: {e} !!!")
+        return False
 
-    Activation is metadata-only unless GHOST_AUTO_ACTIVATE_VARIANTS=true or
-    `activate=True`; this avoids overwriting the live source during gameplay.
-    """
+def stability_governor_check(variant_source: str) -> bool:
+    try:
+        tree = ast.parse(variant_source)
+        has_filter = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                if node.module == "backend.services.sandbox_executor" or (node.module and node.module.endswith("sandbox_executor")):
+                    for alias in node.names:
+                        if alias.name == "secure_ast_filter":
+                            has_filter = True
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "backend.services.sandbox_executor":
+                        has_filter = True
+        if not has_filter:
+            print("!!! STABILITY GOVERNOR: secure_ast_filter import removed !!!")
+            return False
+    except Exception as e:
+        print(f"!!! STABILITY GOVERNOR Syntax check failed: {e} !!!")
+        return False
+
+    test_run_code = variant_source + "\n\nprint('STABILITY_GOVERNOR_OK')"
+    return run_in_subprocess(test_run_code, timeout_seconds=5)
+
+async def promote_ghost_variant(world_id: str, variant_hash: str) -> Dict[str, Any]:
+    if not world_store.supabase:
+        raise RuntimeError("Supabase required for promotion")
+        
+    res = world_store.supabase.table("ghost_evolution").select("*").eq("world_id", world_id).eq("variant_hash", variant_hash).limit(1).execute()
+    if not res.data:
+        raise ValueError(f"Variant with hash {variant_hash} not found in world {world_id}")
+        
+    variant = res.data[0]
+    variant_source = variant["source"]
+    
+    if not stability_governor_check(variant_source):
+        raise ValueError("Stability Governor blocked variant promotion: safety check failed or secure_ast_filter import removed.")
+        
+    staged_path = Path(__file__).parent / "ghost_engine_staged.py"
+    
+    backup_source = None
+    if staged_path.exists():
+        try:
+            backup_source = staged_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+            
+    try:
+        staged_path.write_text(variant_source, encoding="utf-8")
+    except Exception as e:
+        raise RuntimeError(f"Failed to write staging file: {e}")
+        
+    crash_occurred = False
+    error_detail = ""
+    try:
+        import sys
+        import importlib
+        if "backend.agents.ghost_engine" in sys.modules:
+            importlib.reload(sys.modules["backend.agents.ghost_engine"])
+        else:
+            importlib.import_module("backend.agents.ghost_engine")
+            
+        from backend.agents.ghost_engine import scan_ghost_source
+        scan_ghost_source("test_source_code")
+    except Exception as exc:
+        crash_occurred = True
+        error_detail = str(exc)
+        
+    if crash_occurred:
+        print(f"!!! Crash detected in reloaded ghost variant: {error_detail}. Rolling back. !!!")
+        if backup_source is not None:
+            try:
+                staged_path.write_text(backup_source, encoding="utf-8")
+            except Exception:
+                pass
+        else:
+            try:
+                if staged_path.exists():
+                    staged_path.unlink()
+            except Exception:
+                pass
+                
+        try:
+            import sys
+            import importlib
+            if "backend.agents.ghost_engine" in sys.modules:
+                importlib.reload(sys.modules["backend.agents.ghost_engine"])
+        except Exception:
+            pass
+            
+        world_store.append_event(
+            "rollback",
+            f"Ghost variant {variant_hash[:8]} crashed on load: {error_detail}. Rolled back to previous version.",
+            {"variant_hash": variant_hash, "error": error_detail}
+        )
+        raise ValueError(f"Crash detected: {error_detail}. Rolled back successfully.")
+        
+    try:
+        world_store.supabase.table("ghost_evolution").update({"promoted": False}).eq("world_id", world_id).execute()
+        world_store.supabase.table("ghost_evolution").update({"promoted": True, "activated": True}).eq("id", variant["id"]).execute()
+    except Exception as e:
+        print(f"!!! Database error updating promotion status: {e} !!!")
+        
+    world_store.append_event(
+        "ghost_variant_promoted",
+        f"Ghost variant {variant_hash[:8]} successfully promoted to active codebase.",
+        {"variant_hash": variant_hash}
+    )
+    
+    return {"status": "success", "variant_hash": variant_hash}
+
+async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
     original_source = GHOST_SOURCE_PATH.read_text(encoding="utf-8")
     findings = scan_ghost_source(original_source)
     variant_source = await generate_ghost_variant(original_source, findings)
     variant_hash = hashlib.sha256(variant_source.encode("utf-8")).hexdigest()
     diff = source_diff(original_source, variant_source)
 
-    sandbox_harness = "\n".join(
-        [
-            "import ast",
-            f"source = {variant_source!r}",
-            "ast.parse(source)",
-            "compile(source, 'ghost_engine_variant.py', 'exec')",
-            "print('GHOST_VARIANT_OK')",
-        ]
-    )
-    sandbox_result = await execute_code(sandbox_harness, "python")
-    crash_penalty = 0.0 if sandbox_result.success else 1.0
+    governor_ok = stability_governor_check(variant_source)
+    crash_penalty = 0.0 if governor_ok else 1.0
     creativity = creativity_score(original_source, variant_source, findings)
-    impact = stability_impact_score(original_source, variant_source, sandbox_result.success)
+    impact = stability_impact_score(original_source, variant_source, governor_ok)
     fitness = round(creativity * (1 - crash_penalty), 4)
     interesting = interesting_stability_impact(impact, creativity)
-    should_activate = bool(activate or os.getenv("GHOST_AUTO_ACTIVATE_VARIANTS") == "true") and sandbox_result.success and interesting
+    
+    world_id = world_store.state["world_id"] if world_store.state else "local-null-pointer"
+    
+    parent_hash = None
+    if world_store.supabase:
+        try:
+            res = world_store.supabase.table("ghost_evolution").select("variant_hash").eq("world_id", world_id).eq("promoted", True).limit(1).execute()
+            if res.data:
+                parent_hash = res.data[0]["variant_hash"]
+        except Exception as e:
+            print(f"!!! Error querying parent_hash: {e} !!!")
+            
+    if not parent_hash:
+        parent_hash = hashlib.sha256(original_source.encode("utf-8")).hexdigest()
 
     attempt = {
         "id": hashlib.sha1(f"{variant_hash}:{utc_now()}".encode("utf-8")).hexdigest(),
@@ -164,10 +301,25 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
         "fitness": fitness,
         "stability_impact": impact,
         "interesting": interesting,
-        "activated": should_activate,
-        "sandbox": sandbox_result.model_dump(),
+        "activated": False,
+        "sandbox": {"success": governor_ok, "error": "" if governor_ok else "Blocked by Stability Governor"},
         "created_at": utc_now(),
     }
+
+    if world_store.supabase:
+        try:
+            world_store.supabase.table("ghost_evolution").insert({
+                "world_id": world_id,
+                "variant_hash": variant_hash,
+                "source": variant_source,
+                "diff": diff,
+                "fitness": fitness,
+                "parent_hash": parent_hash,
+                "activated": False,
+                "promoted": False
+            }).execute()
+        except Exception as exc:
+            attempt["supabase_error"] = str(exc)
 
     if world_store.supabase:
         try:
@@ -182,14 +334,22 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
                     "crash_penalty": crash_penalty,
                     "stability_impact": impact,
                     "interesting": interesting,
-                    "activated": should_activate,
+                    "activated": False,
                     "sandbox_trace": attempt["sandbox"],
                     "findings": findings,
                     "created_at": attempt["created_at"],
                 }
             ).execute()
-        except Exception as exc:
-            attempt["supabase_error"] = str(exc)
+        except Exception:
+            pass
+
+    should_activate = bool(activate or os.getenv("GHOST_AUTO_ACTIVATE_VARIANTS") == "true") and governor_ok
+    if should_activate:
+        try:
+            await promote_ghost_variant(world_id, variant_hash)
+            attempt["activated"] = True
+        except Exception as e:
+            print(f"!!! Auto-promotion failed: {e} !!!")
 
     world_store.append_event(
         "ghost_self_modify",
@@ -201,14 +361,14 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
             "crash_penalty": crash_penalty,
             "stability_impact": impact,
             "interesting": interesting,
-            "activated": should_activate,
+            "activated": attempt["activated"],
             "sandbox": attempt["sandbox"],
         },
     )
     print(
         "--- GHOST SELF MODIFY: "
         f"fitness={fitness} creativity={creativity} crash_penalty={crash_penalty} "
-        f"interesting={interesting} activated={should_activate} ---"
+        f"interesting={interesting} activated={attempt['activated']} ---"
     )
     return attempt
 
@@ -335,3 +495,30 @@ workflow.add_conditional_edges(
 )
 
 ghost_app = workflow.compile()
+
+# Dynamic self-modification import redirection hook
+if __name__ == "backend.agents.ghost_engine" or __name__ == "ghost_engine":
+    import sys
+    # Avoid reload recursion by checking file path
+    if "ghost_engine_staged" not in __file__:
+        try:
+            import importlib.util
+            staged_path = Path(__file__).parent / "ghost_engine_staged.py"
+            if staged_path.exists():
+                spec = importlib.util.spec_from_file_location("ghost_engine_staged", str(staged_path))
+                staged_module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(staged_module)
+                
+                # Override base definitions with staged variant
+                if hasattr(staged_module, "infiltrator"):
+                    infiltrator = staged_module.infiltrator
+                if hasattr(staged_module, "rewriter"):
+                    rewriter = staged_module.rewriter
+                if hasattr(staged_module, "stability_monitor"):
+                    stability_monitor = staged_module.stability_monitor
+                if hasattr(staged_module, "ghost_app"):
+                    ghost_app = staged_module.ghost_app
+                if hasattr(staged_module, "ghost_self_modify"):
+                    ghost_self_modify = staged_module.ghost_self_modify
+        except Exception as e:
+            print(f"!!! Error loading staged ghost engine: {e} !!!")

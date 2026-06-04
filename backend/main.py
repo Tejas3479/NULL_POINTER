@@ -32,6 +32,31 @@ snapshot_store = SnapshotStore(world_store.supabase)
 
 from contextlib import asynccontextmanager
 
+async def run_ghost_self_modify_cycle():
+    """Background task that runs the Ghost self-modification cycle every N ticks."""
+    ghost_interval = int(os.getenv("GHOST_CYCLE_TICK_INTERVAL", "6"))
+    last_processed_tick = -1
+    while True:
+        try:
+            await sim_clock._tick_event.wait()
+            if sim_clock._tick_count == last_processed_tick:
+                await asyncio.sleep(0.01)
+                continue
+                
+            last_processed_tick = sim_clock._tick_count
+            if last_processed_tick % ghost_interval != 0:
+                continue
+                
+            print("--- GHOST SYSTEM HEARTBEAT: GHOST_SELF_MODIFY TRIGGERED ---")
+            from backend.agents.ghost_engine import ghost_self_modify
+            await ghost_self_modify()
+            
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"!!! GHOST_SELF_MODIFY CYCLE ERROR: {e} !!!")
+            await asyncio.sleep(5)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Create/load the persistent world
@@ -40,11 +65,13 @@ async def lifespan(app: FastAPI):
     # Create background tasks
     heat_task = asyncio.create_task(broadcast_heat_updates())
     ghost_task = asyncio.create_task(run_ghost_cycle())
+    ghost_self_modify_task = asyncio.create_task(run_ghost_self_modify_cycle())
     sim_clock.start()
     yield
     # Shutdown
     heat_task.cancel()
     ghost_task.cancel()
+    ghost_self_modify_task.cancel()
     sim_clock.stop()
 
 async def run_ghost_cycle():
@@ -866,6 +893,46 @@ async def get_chronicle(world_id: str, current_user: User = Depends(get_current_
         return sorted(formatted, key=lambda x: x["tick"], reverse=True)
         
     return []
+
+@app.get("/v1/ghost/variants")
+async def list_ghost_variants(current_user: User = Depends(get_current_user)):
+    if not world_store.supabase:
+        return []
+    world_id = world_store.state["world_id"] if world_store.state else "local-null-pointer"
+    try:
+        res = (
+            world_store.supabase.table("ghost_evolution")
+            .select("*")
+            .eq("world_id", world_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        return res.data or []
+    except Exception as e:
+        print(f"!!! Error fetching ghost variants: {e} !!!")
+        return []
+
+@app.post("/v1/ghost/variants/{variant_hash}/promote")
+async def promote_variant_endpoint(variant_hash: str, current_user: User = Depends(get_current_user)):
+    world_id = world_store.state["world_id"] if world_store.state else "local-null-pointer"
+    from backend.agents.ghost_engine import promote_ghost_variant
+    try:
+        res = await promote_ghost_variant(world_id, variant_hash)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/v1/ghost/variants/{variant_hash}/reject")
+async def reject_ghost_variant(variant_hash: str, current_user: User = Depends(get_current_user)):
+    if not world_store.supabase:
+        raise HTTPException(status_code=400, detail="Supabase not configured")
+    try:
+        world_store.supabase.table("ghost_evolution").delete().eq("variant_hash", variant_hash).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

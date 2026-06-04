@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { DebuggerCore } from '@/components/DebuggerCore';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
+import { GhostEvolutionPanel } from '@/components/GhostEvolutionPanel';
 import { Activity, Flame, Shield, Cpu, RadioTower, GitBranch } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
@@ -18,6 +19,7 @@ export default function Dashboard() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
+  const [activeTab, setActiveTab] = useState<'map' | 'evolution'>('map');
 
   useEffect(() => {
     // 1. Verify session persistence on mount using httpOnly cookie
@@ -133,13 +135,37 @@ export default function Dashboard() {
 
       {/* Sidebar Controls */}
       <aside className="col-span-12 xl:col-span-5 flex flex-col gap-6 overflow-hidden">
+        {/* Tabs Bar */}
+        <div className="flex border-b border-slate-800 bg-slate-950/20 rounded p-1">
+          <button 
+            onClick={() => setActiveTab('map')}
+            className={`flex-1 py-1.5 font-orbitron text-[10px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              activeTab === 'map' ? 'text-white bg-purple-950/30 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            World Map
+          </button>
+          <button 
+            onClick={() => setActiveTab('evolution')}
+            className={`flex-1 py-1.5 font-orbitron text-[10px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              activeTab === 'evolution' ? 'text-purple-400 bg-purple-950/30 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Ghost Evolution
+          </button>
+        </div>
+
         <div className="flex-1 min-h-0">
-          <SimulationWorldMap
-            world={world}
-            userRole={userRole}
-            onParameterChange={updateWorldParameter}
-            onSpawnAgent={spawnAgent}
-          />
+          {activeTab === 'map' ? (
+            <SimulationWorldMap
+              world={world}
+              userRole={userRole}
+              onParameterChange={updateWorldParameter}
+              onSpawnAgent={spawnAgent}
+            />
+          ) : (
+            <GhostEvolutionPanel worldId={world?.world_id || 'local-null-pointer'} />
+          )}
         </div>
 
         {/* Heat Meter Card */}
