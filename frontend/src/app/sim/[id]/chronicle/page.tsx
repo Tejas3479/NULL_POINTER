@@ -1,18 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { ArrowLeft, BookOpen, Terminal, Search, Filter, Database, RefreshCw, Wifi } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { useParams } from 'next/navigation';
+import { BookOpen, Terminal, Search, Filter, Database, Wifi } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface ChronicleEntry {
-  id: string;
-  world_id: string;
-  tick: number;
-  title: string;
-  body: string;
-  faction: string;
-  created_at: string;
-}
+import { useSimulationStore, ChronicleEntry } from '@/store/simulationStore';
 
 const FACTION_DETAILS: Record<string, { name: string; color: string; bg: string; border: string; glow: string }> = {
   kernel: {
@@ -52,88 +44,14 @@ const FACTION_DETAILS: Record<string, { name: string; color: string; bg: string;
   },
 };
 
-export default function ChronicleTimelinePage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = React.use(params);
-  const id = resolvedParams.id;
+export default function ChronicleTimelinePage() {
+  const params = useParams();
+  const id = params.id as string;
 
-  const [entries, setEntries] = useState<ChronicleEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { chronicleEntries: entries, isConnected: wsConnected } = useSimulationStore();
+
   const [search, setSearch] = useState("");
   const [selectedFaction, setSelectedFaction] = useState<string>("all");
-  const [wsConnected, setWsConnected] = useState(false);
-  const socketRef = useRef<WebSocket | null>(null);
-
-  // Fetch initial history
-  useEffect(() => {
-    let active = true;
-    const fetchHistory = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(`http://localhost:8000/v1/simulation/${id}/chronicle`, {
-          credentials: 'include'
-        });
-        if (!res.ok) {
-          throw new Error(`Server returned HTTP ${res.status}`);
-        }
-        const data = await res.json();
-        if (active) {
-          setEntries(data);
-          setLoading(false);
-        }
-      } catch (err: unknown) {
-        console.error("Chronicle fetch failed:", err);
-        if (active) {
-          const message = err instanceof Error ? err.message : "Failed to load chronicle records.";
-          setError(message);
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchHistory();
-    return () => {
-      active = false;
-    };
-  }, [id]);
-
-  // Connect WebSocket
-  useEffect(() => {
-    const wsUrl = `ws://127.0.0.1:8000/ws/heat`;
-    const socket = new WebSocket(wsUrl);
-    socketRef.current = socket;
-
-    socket.onopen = () => {
-      setWsConnected(true);
-    };
-
-    socket.onclose = () => {
-      setWsConnected(false);
-    };
-
-    socket.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === 'narrative_update' && message.entry) {
-          const newEntry: ChronicleEntry = message.entry;
-          // Check if same world before appending
-          if (newEntry.world_id === id) {
-            setEntries(prev => {
-              // Deduplicate just in case
-              if (prev.some(e => e.id === newEntry.id)) return prev;
-              return [newEntry, ...prev];
-            });
-          }
-        }
-      } catch (err) {
-        console.error("WS parse error in chronicle:", err);
-      }
-    };
-
-    return () => {
-      socket.close();
-    };
-  }, [id]);
 
   // Filter entries
   const filteredEntries = useMemo(() => {
@@ -159,34 +77,23 @@ export default function ChronicleTimelinePage({ params }: { params: Promise<{ id
   }, [entries]);
 
   return (
-    <main className="min-h-screen bg-black text-slate-100 font-mono p-6 relative overflow-x-hidden">
-      {/* CRT Scanline Scanline Effects */}
-      <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-25 mix-blend-overlay" />
-      
+    <main className="flex-grow bg-black text-slate-100 font-mono p-6 overflow-y-auto select-none">
       {/* Header Panel */}
       <header className="max-w-[1200px] mx-auto flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-800 pb-6 mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => window.location.href = '/'}
-            className="p-2 border border-slate-800 hover:border-slate-500 rounded bg-slate-900/50 hover:bg-slate-900 text-slate-400 hover:text-white transition-all cursor-pointer"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase px-2 py-0.5 rounded tracking-widest font-orbitron animate-pulse">
-                CHRONICLE ENGINE V2
-              </span>
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
-                <Wifi size={12} className={wsConnected ? "text-emerald-400" : "text-slate-600"} />
-                <span>{wsConnected ? "REALTIME_LINK_ESTABLISHED" : "LINK_STANDBY"}</span>
-              </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase px-2 py-0.5 rounded tracking-widest font-orbitron animate-pulse">
+              CHRONICLE ENGINE V2
+            </span>
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold uppercase">
+              <Wifi size={12} className={wsConnected ? "text-emerald-400" : "text-slate-600"} />
+              <span>{wsConnected ? "REALTIME_LINK_ESTABLISHED" : "LINK_STANDBY"}</span>
             </div>
-            <h1 className="font-orbitron text-2xl font-black tracking-tight text-white mt-1">THE NULL_POINTER LORE CHRONICLE</h1>
-            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mt-0.5">
-              Historical ledger & state-line events for simulation space ID: <span className="text-cyan-400">{id}</span>
-            </p>
           </div>
+          <h1 className="font-orbitron text-2xl font-black tracking-tight text-white mt-1">THE NULL_POINTER LORE CHRONICLE</h1>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 font-bold mt-0.5">
+            Historical ledger & state-line events for simulation space ID: <span className="text-cyan-400">{id}</span>
+          </p>
         </div>
 
         <div className="flex gap-4 self-stretch md:self-auto">
@@ -249,22 +156,11 @@ export default function ChronicleTimelinePage({ params }: { params: Promise<{ id
       </section>
 
       {/* Main Timeline Body */}
-      <section className="max-w-[1000px] mx-auto relative min-h-[400px]">
-        {loading ? (
+      <section className="max-w-[1000px] mx-auto relative min-h-[400px] pb-12">
+        {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <RefreshCw className="animate-spin text-slate-500" size={32} />
+            <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin" />
             <p className="text-xs uppercase tracking-widest text-slate-600 font-bold">Querying temporal databases...</p>
-          </div>
-        ) : error ? (
-          <div className="border border-red-500/20 bg-red-500/5 rounded p-6 text-center max-w-md mx-auto my-12">
-            <h3 className="font-orbitron text-red-500 font-bold uppercase mb-2">Chronicle Stream Defect</h3>
-            <p className="text-xs text-red-400/80 mb-4">{error}</p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 border border-red-500/40 hover:bg-red-500/10 text-red-400 rounded text-xs uppercase font-bold cursor-pointer"
-            >
-              Force Synchronize
-            </button>
           </div>
         ) : filteredEntries.length === 0 ? (
           <div className="text-center py-24 border border-dashed border-slate-900 rounded bg-slate-950/20">
@@ -273,11 +169,6 @@ export default function ChronicleTimelinePage({ params }: { params: Promise<{ id
           </div>
         ) : (
           <div className="relative pl-8 md:pl-12 border-l border-slate-800/80 py-4 space-y-8">
-            {/* Real-time Indicator at top of line if websocket connected */}
-            {wsConnected && (
-              <div className="absolute left-[-5px] top-0 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
-            )}
-
             <AnimatePresence initial={false}>
               {filteredEntries.map((entry, index) => {
                 const isGenesis = entry.tick === 0;
