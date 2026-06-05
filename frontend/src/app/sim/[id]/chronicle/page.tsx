@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { BookOpen, Terminal, Search, Filter, Database, Wifi } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSimulationStore, ChronicleEntry } from '@/store/simulationStore';
+import { useSimulationStore } from '@/store/simulationStore';
 
 const FACTION_DETAILS: Record<string, { name: string; color: string; bg: string; border: string; glow: string }> = {
   kernel: {

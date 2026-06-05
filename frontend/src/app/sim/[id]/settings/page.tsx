@@ -10,10 +10,8 @@ import {
   Copy, 
   Check, 
   GitBranch, 
-  Flame, 
   AlertTriangle 
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 const getCsrfToken = (): string => {
   if (typeof document === 'undefined') return '1';
@@ -33,8 +31,11 @@ export default function SettingsPage() {
   const [sharing, setSharing] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedBadge, setCopiedBadge] = useState(false);
+  const [copiedSdk, setCopiedSdk] = useState(false);
   const [seedCounts, setSeedCounts] = useState<Record<string, number>>({});
   const [saveParameterSuccess, setSaveParameterSuccess] = useState<string | null>(null);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [savingWebhook, setSavingWebhook] = useState(false);
 
   // Initialize seed counts from world archetypes if available
   useEffect(() => {
@@ -43,7 +44,10 @@ export default function SettingsPage() {
       world.agent_archetypes.forEach(arch => {
         counts[arch.id] = 0;
       });
-      setSeedCounts(counts);
+      Promise.resolve().then(() => setSeedCounts(counts));
+    }
+    if (world?.share) {
+      setWebhookUrl(world.share.discord_webhook || "");
     }
   }, [world]);
 
@@ -61,7 +65,8 @@ export default function SettingsPage() {
         },
         body: JSON.stringify({
           public: !isCurrentlyPublic,
-          remixable: false
+          remixable: false,
+          discord_webhook: webhookUrl
         })
       });
       if (res.ok) {
@@ -71,6 +76,33 @@ export default function SettingsPage() {
       console.error("Failed to update share settings", err);
     } finally {
       setSharing(false);
+    }
+  };
+
+  const saveWebhook = async () => {
+    if (!world) return;
+    setSavingWebhook(true);
+    try {
+      const res = await fetch('http://localhost:8000/v1/simulation/share', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        },
+        body: JSON.stringify({
+          public: !!world.share?.public,
+          remixable: !!world.share?.remixable,
+          discord_webhook: webhookUrl
+        })
+      });
+      if (res.ok) {
+        // Success
+      }
+    } catch (err) {
+      console.error("Failed to update share settings with webhook", err);
+    } finally {
+      setSavingWebhook(false);
     }
   };
 
@@ -90,6 +122,14 @@ export default function SettingsPage() {
     navigator.clipboard.writeText(badgeMarkdown);
     setCopiedBadge(true);
     setTimeout(() => setCopiedBadge(false), 2000);
+  };
+
+  const handleCopySdkCode = () => {
+    if (!world) return;
+    const sdkCode = `<script src="http://localhost:3000/nullpointer-sdk.js"></script>\n<div id="np-badge"></div>\n<script>\n  window.onload = function() {\n    NP.init('${world.world_id}', 'np-badge');\n  };\n</script>`;
+    navigator.clipboard.writeText(sdkCode);
+    setCopiedSdk(true);
+    setTimeout(() => setCopiedSdk(false), 2000);
   };
 
   const handleSliderChange = async (key: string, value: number) => {
@@ -322,6 +362,31 @@ export default function SettingsPage() {
                 </button>
               </div>
 
+              {/* Discord Webhook Configuration */}
+              <div className="flex flex-col gap-1.5 border-b border-slate-900/60 pb-3">
+                <span className="text-[10px] uppercase font-bold text-slate-400 font-orbitron">Discord Webhook URL</span>
+                <p className="text-[8px] text-slate-500 uppercase tracking-normal mb-1">
+                  Receive webhook notifications when stability drops below 20%, alliances form, or codebase changes.
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="https://discord.com/api/webhooks/..."
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    disabled={userRole !== 'admin' || savingWebhook}
+                    className="flex-1 bg-black border border-slate-900 rounded px-2.5 py-1.5 text-[9px] text-purple-400 outline-none font-mono focus:border-purple-500"
+                  />
+                  <button
+                    onClick={saveWebhook}
+                    disabled={userRole !== 'admin' || savingWebhook}
+                    className="px-3 py-1.5 border border-purple-500/50 bg-purple-950/20 text-purple-400 hover:bg-purple-950/40 text-[9px] font-orbitron font-bold uppercase rounded cursor-pointer disabled:opacity-50"
+                  >
+                    {savingWebhook ? 'SAVING...' : 'SAVE'}
+                  </button>
+                </div>
+              </div>
+
               {world.share?.public && (
                 <div className="space-y-3">
                   <div className="flex flex-col gap-1.5">
@@ -358,6 +423,25 @@ export default function SettingsPage() {
                         title="Copy Badge Markdown"
                       >
                         {copiedBadge ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[9px] uppercase text-slate-500 font-bold">Embed Badge SDK Code</span>
+                    <div className="flex items-center gap-2 bg-black border border-slate-900 rounded p-1.5">
+                      <input
+                        type="text"
+                        readOnly
+                        value={`<script src="http://localhost:3000/nullpointer-sdk.js"></script><div id="np-badge"></div><script>window.onload=function(){NP.init('${world.world_id}','np-badge');};</script>`}
+                        className="flex-1 bg-transparent text-[9px] text-amber-400 outline-none select-all font-mono"
+                      />
+                      <button
+                        onClick={handleCopySdkCode}
+                        className="p-1 hover:bg-slate-900 rounded text-slate-400 hover:text-white transition-all cursor-pointer"
+                        title="Copy Embed Code"
+                      >
+                        {copiedSdk ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                       </button>
                     </div>
                   </div>

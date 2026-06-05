@@ -2,8 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
-import { Search, Filter, Shield, Smile, Eye, EyeOff, UserCheck, Heart } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Search, Shield, Smile, EyeOff, UserCheck } from 'lucide-react';
 
 const FACTION_COLORS: Record<string, { color: string; border: string; bg: string }> = {
   kernel: { color: "text-sky-400", border: "border-sky-500/30", bg: "bg-sky-500/10" },
@@ -300,7 +299,6 @@ export default function AgentsPage() {
                   const isAllied = rel.type === 'ALLIED';
                   const isHostile = rel.type === 'HOSTILE';
                   const nodeColor = isAllied ? 'border-emerald-500 bg-emerald-950/20 text-emerald-400' : isHostile ? 'border-red-500 bg-red-950/20 text-red-400' : 'border-slate-800 bg-slate-950/20 text-slate-400';
-                  const lineColor = isAllied ? 'border-emerald-500/20' : isHostile ? 'border-red-500/20' : 'border-slate-800/10';
 
                   return (
                     <React.Fragment key={idx}>

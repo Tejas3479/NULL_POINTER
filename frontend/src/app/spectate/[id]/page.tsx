@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Shield, Flame, RadioTower, Lock, LogIn, AlertCircle, GitBranch } from 'lucide-react';
 import Link from 'next/link';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
@@ -15,9 +15,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
     heat,
     stability,
     logs,
-    isConnected,
-    world,
-    activeAttack
+    world
   } = useSimulationSocket(`ws://127.0.0.1:8000/ws/spectate/${worldId}`);
 
   const [toast, setToast] = useState<string | null>(null);
@@ -72,8 +70,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
 
         <div className="flex gap-6 items-center">
           <div className="flex flex-col items-end">
-            <span className="text-[8px] uppercase text-slate-500 font-bold">View Count</span>
-            <span className="text-sm font-orbitron font-bold text-white">{(world as any)?.view_count ?? 1} Spectators</span>
+            <span className="text-sm font-orbitron font-bold text-white">{world?.view_count ?? 1} Spectators</span>
           </div>
 
           <div className="flex flex-col items-end border-l border-slate-800 pl-4 pr-2">
@@ -94,11 +91,27 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
 
           <Link
             href={`/create?remix=${worldId}`}
-            className="px-4 py-2 border border-purple-500 hover:bg-purple-500/10 text-purple-400 font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(168,85,247,0.1)]"
+            className="px-4 py-2 border border-purple-500 hover:bg-purple-500/10 text-purple-400 font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
           >
             <GitBranch size={14} />
             REMIX WORLD
           </Link>
+
+          <a
+            href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
+              `Simulation ${world?.name || worldId} stability is at ${stability}%. Watch live spectate session!`
+            )}&url=${encodeURIComponent(
+              typeof window !== 'undefined' ? `${window.location.origin}/spectate/${worldId}` : `http://localhost:3000/spectate/${worldId}`
+            )}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 border border-cyan-500 hover:bg-cyan-500/10 text-cyan-400 font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-current" aria-hidden="true">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+            </svg>
+            SHARE STATUS
+          </a>
 
           <a
             href="/login"

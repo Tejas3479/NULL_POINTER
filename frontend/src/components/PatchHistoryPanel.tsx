@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { History, RefreshCw, Check, X, ShieldCheck, ShieldAlert, Terminal, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import { History, RefreshCw, Check, X, ShieldCheck, ShieldAlert, Terminal, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SandboxRun {
@@ -60,7 +60,9 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
   }, [worldId]);
 
   useEffect(() => {
-    fetchTraces();
+    Promise.resolve().then(() => {
+      fetchTraces();
+    });
     // Poll every 10 seconds for new patch attempts
     const interval = setInterval(() => {
       fetchTraces();

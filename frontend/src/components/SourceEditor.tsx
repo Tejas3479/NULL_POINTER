@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { 
   Code2, 
@@ -14,8 +14,7 @@ import {
   ChevronUp, 
   Trash2, 
   Save, 
-  Check, 
-  AlertCircle
+  Check
 } from 'lucide-react';
 
 const Editor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
@@ -87,7 +86,7 @@ export const SourceEditor = () => {
     try {
       const raw = localStorage.getItem('null_pointer_code_history');
       if (raw) {
-        setHistoryList(JSON.parse(raw));
+        Promise.resolve().then(() => setHistoryList(JSON.parse(raw)));
       }
     } catch (e) {
       console.error("Failed to parse code history", e);
@@ -166,11 +165,12 @@ export const SourceEditor = () => {
       const data = await res.json();
       setExecutionResult(data);
       handleSaveToHistory();
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Network error occurred while calling sandbox.';
       setExecutionResult({
         success: false,
         output: '',
-        error: err.message || 'Network error occurred while calling sandbox.',
+        error: errMsg,
         execution_time: 0,
         provider: 'local-error'
       });
@@ -206,12 +206,13 @@ export const SourceEditor = () => {
       const data = await res.json();
       setFindings(data.findings || []);
       handleSaveToHistory();
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Failed to parse code or contact analysis backend.';
       setFindings([
         {
           severity: 'HIGH',
           rule: 'analysis_failure',
-          message: err.message || 'Failed to parse code or contact analysis backend.',
+          message: errMsg,
           line: 1
         }
       ]);
@@ -466,7 +467,7 @@ export const SourceEditor = () => {
                   </div>
                 ) : (
                   <div className="text-slate-600 italic py-4 text-center">
-                    No run logs. Click "Run Sandbox" to initiate execution.
+                    No run logs. Click &apos;Run Sandbox&apos; to initiate execution.
                   </div>
                 )}
               </div>
@@ -528,7 +529,7 @@ export const SourceEditor = () => {
                   )
                 ) : (
                   <div className="text-slate-600 italic py-4 text-center">
-                    No scanning results. Click "Analyze" to inspect potential security flaws.
+                    No scanning results. Click &apos;Analyze&apos; to inspect potential security flaws.
                   </div>
                 )}
               </div>

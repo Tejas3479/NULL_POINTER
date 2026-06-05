@@ -17,6 +17,8 @@ export interface ActiveAttack {
 
 export interface SimulationWorld {
   world_id: string;
+  name?: string;
+  description?: string;
   tick: number;
   heat: number;
   stability: number;
@@ -30,6 +32,7 @@ export interface SimulationWorld {
   share?: {
     public: boolean;
     remixable?: boolean;
+    discord_webhook?: string;
   };
   view_count?: number;
 }

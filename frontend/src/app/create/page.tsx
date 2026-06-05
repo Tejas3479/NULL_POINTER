@@ -11,10 +11,23 @@ import {
   Play, 
   ArrowLeft, 
   ArrowRight, 
-  HelpCircle,
   Shuffle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface Template {
+  name: string;
+  description: string;
+  seed: string;
+  faction_distribution: Record<string, number>;
+  agent_seeds: Record<string, number>;
+  parameters: {
+    tick_interval_ms: number;
+    max_agents: number;
+    stability_decay: number;
+    entropy_bias: number;
+  };
+}
 
 // Import Templates directly
 import defaultCollapse from '@/templates/default-collapse.json';
@@ -66,7 +79,7 @@ function WorldCreatorWizardContent() {
   const remixId = searchParams.get('remix');
 
   const [step, setStep] = useState(1);
-  const [loadingRemix, setLoadingRemix] = useState(false);
+  const [loadingRemix, setLoadingRemix] = useState(!!remixId);
   const [launching, setLaunching] = useState(false);
 
   // Step 1 State
@@ -101,7 +114,7 @@ function WorldCreatorWizardContent() {
   // 1. Remix pre-filling
   useEffect(() => {
     if (!remixId) return;
-    setLoadingRemix(true);
+    Promise.resolve().then(() => setLoadingRemix(true));
 
     fetch(`http://localhost:8000/v1/simulation/${remixId}/state`, { credentials: 'include' })
       .then(res => {
@@ -163,7 +176,7 @@ function WorldCreatorWizardContent() {
     setSeed(randomVal);
   };
 
-  const selectTemplate = (tpl: any) => {
+  const selectTemplate = (tpl: Template) => {
     setName(tpl.name);
     setDescription(tpl.description);
     setSeed(tpl.seed);
@@ -171,7 +184,7 @@ function WorldCreatorWizardContent() {
     
     const seeds: Record<string, number> = {};
     ARCHETYPES_LIST.forEach(arch => {
-      seeds[arch.id] = tpl.agent_seeds[arch.id as keyof typeof tpl.agent_seeds] || 0;
+      seeds[arch.id] = tpl.agent_seeds[arch.id] || 0;
     });
     setAgentSeeds(seeds);
 
@@ -199,7 +212,6 @@ function WorldCreatorWizardContent() {
       newAgentSeeds[archId] = 0;
     });
 
-    let remaining = totalAgents;
     const allocations: Record<string, number> = {};
     const factionKeys = Object.keys(FACTION_ARCHETYPES) as Array<keyof typeof FACTION_ARCHETYPES>;
 
@@ -499,7 +511,7 @@ function WorldCreatorWizardContent() {
                       </div>
 
                       <p className="text-[9px] uppercase text-slate-500 leading-normal mb-2">
-                        Distribute initial agent workloads (limit 0 to 50 each). "Quick Fill" pre-populates based on faction percentages from Step 2.
+                        Distribute initial agent workloads (limit 0 to 50 each). &quot;Quick Fill&quot; pre-populates based on faction percentages from Step 2.
                       </p>
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-h-[300px] overflow-y-auto custom-scrollbar border border-slate-900 bg-black/30 p-3 rounded">

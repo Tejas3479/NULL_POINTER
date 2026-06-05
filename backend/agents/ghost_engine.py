@@ -255,11 +255,24 @@ async def promote_ghost_variant(world_id: str, variant_hash: str) -> Dict[str, A
     except Exception as e:
         print(f"!!! Database error updating promotion status: {e} !!!")
         
+    message = f"Ghost variant {variant_hash[:8]} successfully promoted to active codebase."
     world_store.append_event(
         "ghost_variant_promoted",
-        f"Ghost variant {variant_hash[:8]} successfully promoted to active codebase.",
+        message,
         {"variant_hash": variant_hash}
     )
+
+    try:
+        import asyncio
+        from backend.services.discord_notifier import trigger_discord_notification
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(trigger_discord_notification(world_id, "ghost_variant_promoted", message, {"variant_hash": variant_hash}))
+        except RuntimeError:
+            import threading
+            threading.Thread(target=lambda: asyncio.run(trigger_discord_notification(world_id, "ghost_variant_promoted", message, {"variant_hash": variant_hash})), daemon=True).start()
+    except Exception as e:
+        print(f"!!! Discord Alert Error: {e} !!!")
     
     return {"status": "success", "variant_hash": variant_hash}
 
@@ -321,27 +334,6 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
         except Exception as exc:
             attempt["supabase_error"] = str(exc)
 
-    if world_store.supabase:
-        try:
-            world_store.supabase.table("ghost_variants").insert(
-                {
-                    "id": attempt["id"],
-                    "variant_hash": variant_hash,
-                    "source": variant_source,
-                    "diff": diff,
-                    "score": fitness,
-                    "creativity": creativity,
-                    "crash_penalty": crash_penalty,
-                    "stability_impact": impact,
-                    "interesting": interesting,
-                    "activated": False,
-                    "sandbox_trace": attempt["sandbox"],
-                    "findings": findings,
-                    "created_at": attempt["created_at"],
-                }
-            ).execute()
-        except Exception:
-            pass
 
     should_activate = bool(activate or os.getenv("GHOST_AUTO_ACTIVATE_VARIANTS") == "true") and governor_ok
     if should_activate:
@@ -365,6 +357,14 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
             "sandbox": attempt["sandbox"],
         },
     )
+
+    if interesting and fitness > 0.7:
+        emergence_msg = f"Emergence detected: Ghost variant {variant_hash[:8]} generated with high complexity (fitness {fitness}) and interesting behavior."
+        world_store.append_event(
+            "emergence_detected",
+            emergence_msg,
+            {"variant_hash": variant_hash, "fitness": fitness}
+        )
     print(
         "--- GHOST SELF MODIFY: "
         f"fitness={fitness} creativity={creativity} crash_penalty={crash_penalty} "

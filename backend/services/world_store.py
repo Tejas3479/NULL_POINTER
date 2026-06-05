@@ -89,7 +89,8 @@ BASE_WORLD: Dict[str, Any] = {
         }
     ],
     "events": [],
-    "share": {"public": False, "remixable": False, "challenge_code": None},
+    "share": {"public": False, "remixable": False, "challenge_code": None, "discord_webhook": None},
+    "owner": "System",
 }
 
 
@@ -220,8 +221,37 @@ class WorldStore:
         return state
 
     def save(self) -> None:
-        # if self.path:
-        #     self.path.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
+        # Check if stability crossed below 20
+        if self.state:
+            current_stability = self.state.get("stability", 100)
+            prev_stability = getattr(self, "_prev_stability", 100)
+            self._prev_stability = current_stability
+            
+            if prev_stability >= 20 and current_stability < 20:
+                world_id = self.state.get("world_id", "local-null-pointer")
+                message = f"🚨 CRITICAL STABILITY Alert: Simulation stability has dropped below threshold to {current_stability}%!"
+                
+                # Check if it was already appended in the same tick to avoid double logs
+                last_event = self.state["events"][-1] if self.state.get("events") else None
+                if not last_event or last_event.get("kind") != "stability_critical" or last_event.get("tick") != self.state.get("tick"):
+                    self.append_event(
+                        "stability_critical",
+                        message,
+                        {"stability": current_stability}
+                    )
+                    
+                try:
+                    import asyncio
+                    from backend.services.discord_notifier import trigger_discord_notification
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(trigger_discord_notification(world_id, "stability_critical", message, {"stability": current_stability}))
+                    except RuntimeError:
+                        import threading
+                        threading.Thread(target=lambda: asyncio.run(trigger_discord_notification(world_id, "stability_critical", message, {"stability": current_stability})), daemon=True).start()
+                except Exception as e:
+                    print(f"!!! Discord Alert Error: {e} !!!")
+
         if self.supabase:
             try:
                 self.supabase.table("simulation_worlds").upsert(
@@ -263,6 +293,20 @@ class WorldStore:
         self._evolve_factions()
         if self.state["tick"] % 4 == 0:
             self._record_lore()
+
+        # Check for emergence events
+        anomalies = self.state.get("anomalies", [])
+        if anomalies:
+            max_severity_anomaly = max(anomalies, key=lambda a: a.get("severity", 0))
+            if max_severity_anomaly.get("severity", 0) > 80 and random.random() < 0.2:
+                name = max_severity_anomaly.get("name", "Unknown anomaly")
+                msg = f"Emergence detected: Anomaly '{name}' has escalated to critical threshold ({max_severity_anomaly['severity']}% severity)."
+                self.append_event(
+                    "emergence_detected",
+                    msg,
+                    {"anomaly_id": max_severity_anomaly.get("id"), "severity": max_severity_anomaly["severity"]}
+                )
+
         self.save()
         return self.snapshot()
 

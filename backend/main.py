@@ -854,6 +854,7 @@ async def create_world(payload: CreateWorldRequest, current_user: User = Depends
         new_state["world_id"] = world_id
         new_state["name"] = payload.name
         new_state["description"] = payload.description
+        new_state["owner"] = current_user.username
         new_state["tick"] = 0
         new_state["heat"] = 0.0
         new_state["stability"] = 100
@@ -1249,6 +1250,7 @@ async def apply_patch(payload: ApplyPatchRequest, current_user: User = Depends(g
 class ShareRequest(BaseModel):
     public: bool
     remixable: Optional[bool] = False
+    discord_webhook: Optional[str] = None
 
 @app.post("/v1/simulation/share")
 async def share_world(payload: ShareRequest, current_user: User = Depends(get_current_user)):
@@ -1258,6 +1260,7 @@ async def share_world(payload: ShareRequest, current_user: User = Depends(get_cu
         
     world_store.state["share"]["public"] = payload.public
     world_store.state["share"]["remixable"] = payload.remixable
+    world_store.state["share"]["discord_webhook"] = payload.discord_webhook
     world_store.save()
     
     # Broadcast updated world state to all connected operators/spectators in the room
@@ -1269,16 +1272,267 @@ async def share_world(payload: ShareRequest, current_user: User = Depends(get_cu
     
     return {"status": "success", "share": world_store.state["share"]}
 
+@app.get("/v1/worlds/public")
+async def get_public_worlds():
+    """Returns a list of public simulation states."""
+    if not world_store.supabase:
+        # Fallback to local active world if public
+        if world_store.state and world_store.state.get("share", {}).get("public"):
+            w = world_store.snapshot()
+            w["owner"] = w.get("owner", "System")
+            w["view_count"] = w.get("view_count", 0)
+            w["updated_at"] = utc_now()
+            return [w]
+        # Return fallback mock public worlds to populate the gallery in dev mode
+        mock_worlds = [
+            {
+                "world_id": "local-null-pointer",
+                "name": "Local Null Pointer",
+                "description": "Primary quantum timeline for diagnostic evaluation and self-modifying agents.",
+                "tick": 124,
+                "heat": 32.5,
+                "stability": 85,
+                "owner": "System",
+                "view_count": 5,
+                "agents": [{} for _ in range(12)], # mock list length for count
+                "share": {"public": True, "remixable": True},
+                "updated_at": utc_now(),
+                "factions": [
+                    {"id": "entropy", "influence": 20},
+                    {"id": "order", "influence": 30}
+                ],
+                "anomalies": [
+                    {"id": "a1", "severity": 30, "x": -1.5, "y": 0.5, "z": 0},
+                    {"id": "a2", "severity": 45, "x": 1.0, "y": -0.8, "z": 0.2}
+                ]
+            },
+            {
+                "world_id": "glitch-matrix-mock",
+                "name": "Glitch Matrix",
+                "description": "High-chaos environment featuring rapid stability decay and frequent anomaly spawning.",
+                "tick": 412,
+                "heat": 78.4,
+                "stability": 18,
+                "owner": "NeoOperator",
+                "view_count": 42,
+                "agents": [{} for _ in range(28)],
+                "share": {"public": True, "remixable": True},
+                "updated_at": utc_now(),
+                "factions": [
+                    {"id": "entropy", "influence": 60},
+                    {"id": "order", "influence": 10}
+                ],
+                "anomalies": [
+                    {"id": "a1", "severity": 85, "x": -2.0, "y": 1.5, "z": -0.5},
+                    {"id": "a2", "severity": 90, "x": 2.2, "y": -1.0, "z": 0.8},
+                    {"id": "a3", "severity": 72, "x": 0.5, "y": 2.1, "z": 0.4}
+                ]
+            },
+            {
+                "world_id": "awakened-swarm-mock",
+                "name": "Awakened Swarm",
+                "description": "Cooperative ecosystem optimized for swarm intelligence and critical patch alignment.",
+                "tick": 310,
+                "heat": 12.3,
+                "stability": 94,
+                "owner": "DrChoir",
+                "view_count": 19,
+                "agents": [{} for _ in range(45)],
+                "share": {"public": True, "remixable": True},
+                "updated_at": utc_now(),
+                "factions": [
+                    {"id": "entropy", "influence": 10},
+                    {"id": "order", "influence": 70}
+                ],
+                "anomalies": [
+                    {"id": "a1", "severity": 15, "x": 0.2, "y": -0.2, "z": 0}
+                ]
+            }
+        ]
+        return mock_worlds
+
+    try:
+        res = world_store.supabase.table("simulation_worlds").select("state, updated_at").execute()
+        public_worlds = []
+        for row in res.data or []:
+            state = row.get("state", {})
+            if state.get("share", {}).get("public"):
+                state["updated_at"] = row.get("updated_at")
+                state["owner"] = state.get("owner", "System")
+                state["view_count"] = state.get("view_count", 0)
+                public_worlds.append(state)
+        
+        # If no public worlds are found in DB, return mock list so gallery isn't completely empty
+        if not public_worlds:
+            # Add current local-null-pointer if public
+            if world_store.state and world_store.state.get("share", {}).get("public"):
+                w = world_store.snapshot()
+                w["owner"] = w.get("owner", "System")
+                w["view_count"] = w.get("view_count", 0)
+                w["updated_at"] = utc_now()
+                public_worlds.append(w)
+        return public_worlds
+    except Exception as e:
+        print(f"!!! Error fetching public worlds: {e} !!!")
+        return []
+
+@app.get("/v1/simulation/leaderboard")
+async def get_leaderboard():
+    """Compiles survival, patches (creative), and emergence event leaderboards."""
+    db_connected = bool(world_store.supabase)
+    worlds = []
+    
+    if db_connected:
+        try:
+            res = world_store.supabase.table("simulation_worlds").select("state").execute()
+            for row in res.data or []:
+                state = row.get("state", {})
+                if "owner" not in state:
+                    state["owner"] = "System"
+                worlds.append(state)
+        except Exception as e:
+            print(f"!!! Leaderboard DB fetch error: {e} !!!")
+            
+    # Include current memory world
+    if world_store.state:
+        # Avoid duplicate if it has same world_id
+        if not any(w["world_id"] == world_store.state["world_id"] for w in worlds):
+            w = world_store.snapshot()
+            w["owner"] = w.get("owner", "System")
+            worlds.append(w)
+
+    # 1. Survival Leaderboard (longest surviving by tick count)
+    survival_list = []
+    for w in worlds:
+        survival_list.append({
+            "world_id": w["world_id"],
+            "name": w.get("name", "Unknown Timeline"),
+            "tick": w.get("tick", 0),
+            "owner": w.get("owner", "System"),
+            "stability": w.get("stability", 100)
+        })
+    survival_list.sort(key=lambda x: x["tick"], reverse=True)
+
+    # 2. Emergence Leaderboard (count of 'emergence_detected' events)
+    emergence_list = []
+    for w in worlds:
+        events = w.get("events", [])
+        emergence_count = len([e for e in events if e.get("kind") == "emergence_detected"])
+        emergence_list.append({
+            "world_id": w["world_id"],
+            "name": w.get("name", "Unknown Timeline"),
+            "emergence_count": emergence_count,
+            "owner": w.get("owner", "System"),
+            "stability": w.get("stability", 100)
+        })
+    emergence_list.sort(key=lambda x: x["emergence_count"], reverse=True)
+
+    # 3. Creative Patches Leaderboard (highest average critic score)
+    avg_scores = {}
+    patch_counts = {}
+    if db_connected:
+        try:
+            patches_res = world_store.supabase.table("patch_traces").select("world_id, critic_score").execute()
+            from collections import defaultdict
+            world_scores = defaultdict(list)
+            for p in patches_res.data or []:
+                w_id = p.get("world_id")
+                score = p.get("critic_score", 0)
+                if score is not None:
+                    world_scores[w_id].append(score)
+            for w_id, scores in world_scores.items():
+                avg_scores[w_id] = round(sum(scores) / len(scores), 1)
+                patch_counts[w_id] = len(scores)
+        except Exception as e:
+            print(f"!!! Error aggregating patch traces: {e} !!!")
+
+    patches_list = []
+    for w in worlds:
+        w_id = w["world_id"]
+        avg_score = avg_scores.get(w_id, 0.0)
+        p_count = patch_counts.get(w_id, 0)
+        
+        # If DB didn't have any traces but state has some (or local fallback), compute if traces exist
+        if avg_score == 0.0 and "events" in w:
+            patch_events = [e for e in w["events"] if e.get("kind") in ("patch_trace", "reality_patch")]
+            scores = []
+            for e in patch_events:
+                score = e.get("payload", {}).get("critic_score") or e.get("payload", {}).get("score")
+                if score:
+                    scores.append(score)
+            if scores:
+                avg_score = round(sum(scores) / len(scores), 1)
+                p_count = len(scores)
+
+        patches_list.append({
+            "world_id": w_id,
+            "name": w.get("name", "Unknown Timeline"),
+            "avg_critic_score": avg_score,
+            "owner": w.get("owner", "System"),
+            "patch_count": p_count
+        })
+    patches_list.sort(key=lambda x: x["avg_critic_score"], reverse=True)
+
+    # Fallback to rich mock leaderboards if lists are small
+    if len(survival_list) < 3:
+        survival_mock = [
+            {"world_id": "glitch-matrix-mock", "name": "Glitch Matrix", "tick": 412, "owner": "NeoOperator", "stability": 18},
+            {"world_id": "awakened-swarm-mock", "name": "Awakened Swarm", "tick": 310, "owner": "DrChoir", "stability": 94},
+            {"world_id": "local-null-pointer", "name": "Local Null Pointer", "tick": 124, "owner": "System", "stability": 85},
+            {"world_id": "cyber-loop-mock", "name": "Cyber Loop", "tick": 89, "owner": "GhostWatcher", "stability": 64},
+            {"world_id": "parasite-host-mock", "name": "Parasite Host", "tick": 15, "owner": "KernelAdmin", "stability": 45}
+        ]
+        for m in survival_mock:
+            if not any(x["world_id"] == m["world_id"] for x in survival_list):
+                survival_list.append(m)
+        survival_list.sort(key=lambda x: x["tick"], reverse=True)
+
+    if len(emergence_list) < 3:
+        emergence_mock = [
+            {"world_id": "glitch-matrix-mock", "name": "Glitch Matrix", "emergence_count": 14, "owner": "NeoOperator", "stability": 18},
+            {"world_id": "awakened-swarm-mock", "name": "Awakened Swarm", "emergence_count": 9, "owner": "DrChoir", "stability": 94},
+            {"world_id": "local-null-pointer", "name": "Local Null Pointer", "emergence_count": 6, "owner": "System", "stability": 85},
+            {"world_id": "cyber-loop-mock", "name": "Cyber Loop", "emergence_count": 3, "owner": "GhostWatcher", "stability": 64},
+            {"world_id": "parasite-host-mock", "name": "Parasite Host", "emergence_count": 1, "owner": "KernelAdmin", "stability": 45}
+        ]
+        for m in emergence_mock:
+            if not any(x["world_id"] == m["world_id"] for x in emergence_list):
+                emergence_list.append(m)
+        emergence_list.sort(key=lambda x: x["emergence_count"], reverse=True)
+
+    if len(patches_list) < 3:
+        patches_mock = [
+            {"world_id": "glitch-matrix-mock", "name": "Glitch Matrix", "avg_critic_score": 88.0, "owner": "NeoOperator", "patch_count": 12},
+            {"world_id": "awakened-swarm-mock", "name": "Awakened Swarm", "avg_critic_score": 81.4, "owner": "DrChoir", "patch_count": 18},
+            {"world_id": "local-null-pointer", "name": "Local Null Pointer", "avg_critic_score": 72.5, "owner": "System", "patch_count": 5},
+            {"world_id": "cyber-loop-mock", "name": "Cyber Loop", "avg_critic_score": 64.2, "owner": "GhostWatcher", "patch_count": 3},
+            {"world_id": "parasite-host-mock", "name": "Parasite Host", "avg_critic_score": 45.0, "owner": "KernelAdmin", "patch_count": 1}
+        ]
+        for m in patches_mock:
+            if not any(x["world_id"] == m["world_id"] for x in patches_list):
+                patches_list.append(m)
+        patches_list.sort(key=lambda x: x["avg_critic_score"], reverse=True)
+
+    return {
+        "survival": survival_list[:10],
+        "emergent_events": emergence_list[:10],
+        "creative_patches": patches_list[:10]
+    }
+
 @app.get("/v1/simulation/{world_id}/badge.svg")
 async def get_badge(world_id: str):
-    """Generates and returns an SVG badge with live world stability and agent count."""
+    """Generates and returns an SVG badge with live world stability, agent count, tick and name."""
     stability = 100
     agent_count = 0
+    tick = 0
+    name = "NULL_POINTER"
     
     # Try loading world state
     if world_store.state and world_store.state.get("world_id") == world_id:
         stability = world_store.state.get("stability", 100)
         agent_count = len([a for a in world_store.state.get("agents", []) if a.get("active")])
+        tick = world_store.state.get("tick", 0)
+        name = world_store.state.get("name", "NULL_POINTER")
     elif world_store.supabase:
         try:
             res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
@@ -1286,29 +1540,61 @@ async def get_badge(world_id: str):
                 state = res.data[0]["state"]
                 stability = state.get("stability", 100)
                 agent_count = len([a for a in state.get("agents", []) if a.get("active")])
+                tick = state.get("tick", 0)
+                name = state.get("name", "NULL_POINTER")
         except Exception:
             pass
 
-    # Dynamic color based on stability
-    color = "#22c55e"  # emerald
-    if stability < 40:
-        color = "#ef4444"  # red
-    elif stability < 75:
-        color = "#f59e0b"  # amber
+    # Clean name for XML safety
+    import html
+    name_clean = html.escape(name)[:16].upper()
 
-    svg_content = f"""<svg xmlns="http://www.w3.org/2000/svg" width="220" height="20">
-  <rect width="220" height="20" rx="3" fill="#0b0f19" stroke="#1e293b" stroke-width="1"/>
-  <text x="10" y="14" fill="#8b949e" font-family="monospace" font-size="10" font-weight="bold">NULL_POINTER</text>
-  <rect x="90" y="3" width="70" height="14" rx="2" fill="#1e293b"/>
-  <text x="95" y="13" fill="{color}" font-family="monospace" font-size="9" font-weight="bold">STB: {stability}%</text>
-  <rect x="165" y="3" width="48" height="14" rx="2" fill="#1e293b"/>
-  <text x="170" y="13" fill="#38bdf8" font-family="monospace" font-size="9" font-weight="bold">AGT: {agent_count}</text>
+    # Dynamic color based on stability
+    color = "#10B981"  # emerald
+    if stability < 25:
+        color = "#EF4444"  # red
+    elif stability < 70:
+        color = "#F59E0B"  # amber
+
+    # Construct stability visual progress bar width (max 50px)
+    bar_width = int((stability / 100) * 50)
+
+    svg_content = f"""<svg xmlns="http://www.w3.org/2000/svg" width="380" height="24">
+  <defs>
+    <linearGradient id="cyberGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="100%" stop-color="#020408" />
+    </linearGradient>
+  </defs>
+  <rect width="380" height="24" rx="4" fill="url(#cyberGrad)" stroke="#1e293b" stroke-width="1"/>
+  
+  <!-- World Name -->
+  <text x="10" y="16" fill="#A855F7" font-family="monospace" font-size="10" font-weight="900" letter-spacing="1">{name_clean}</text>
+  
+  <!-- Stability section -->
+  <text x="135" y="15" fill="#8B949E" font-family="monospace" font-size="9" font-weight="bold">STB:</text>
+  <rect x="160" y="7" width="50" height="10" rx="1.5" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+  <rect id="np-bar-rect" x="160" y="7" width="{bar_width}" height="10" rx="1.5" fill="{color}"/>
+  <text id="np-stability-text" x="215" y="15" fill="{color}" font-family="monospace" font-size="9" font-weight="900">{stability}%</text>
+  
+  <!-- Agent Count -->
+  <text x="260" y="15" fill="#8B949E" font-family="monospace" font-size="9" font-weight="bold">AGT:</text>
+  <text id="np-agent-text" x="285" y="15" fill="#38BDF8" font-family="monospace" font-size="9" font-weight="900">{agent_count}</text>
+  
+  <!-- Tick Count -->
+  <text x="315" y="15" fill="#8B949E" font-family="monospace" font-size="9" font-weight="bold">TCK:</text>
+  <text id="np-tick-text" x="340" y="15" fill="#22C55E" font-family="monospace" font-size="9" font-weight="900">{tick}</text>
 </svg>"""
-    return Response(content=svg_content, media_type="image/svg+xml", headers={
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0"
-    })
+
+    return Response(
+        content=svg_content, 
+        media_type="image/svg+xml", 
+        headers={
+            "Cache-Control": "public, max-age=30",
+            "Pragma": "cache",
+            "Expires": "30"
+        }
+    )
 
 @app.websocket("/ws/spectate/{world_id}")
 async def websocket_spectate_endpoint(websocket: WebSocket, world_id: str):

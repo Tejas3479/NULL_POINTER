@@ -32,14 +32,37 @@ def update_relationship_weight(agent_a_id: str, agent_b_id: str, delta: int):
         # A -> B
         a_rels = agent_a.setdefault("relationships", {})
         old_w_a = a_rels.get(agent_b_id, 0)
-        a_rels[agent_b_id] = max(-100, min(100, old_w_a + delta))
+        new_w_a = max(-100, min(100, old_w_a + delta))
+        a_rels[agent_b_id] = new_w_a
         
         # B -> A
         b_rels = agent_b.setdefault("relationships", {})
         old_w_b = b_rels.get(agent_a_id, 0)
-        b_rels[agent_a_id] = max(-100, min(100, old_w_b + delta))
+        new_w_b = max(-100, min(100, old_w_b + delta))
+        b_rels[agent_a_id] = new_w_b
         
         world_store.save()
+
+        # Check if an alliance is formed (relationship strength crosses 80)
+        if old_w_a < 80 and new_w_a >= 80:
+            world_id = world_store.state.get("world_id", "local-null-pointer")
+            message = f"🤝 Alliance formed! {agent_a['name']} and {agent_b['name']} have forged an alliance with relationship strength {new_w_a}."
+            world_store.append_event(
+                "agent_alliance_formed",
+                message,
+                {"agent_a_id": agent_a_id, "agent_b_id": agent_b_id, "weight": new_w_a}
+            )
+            try:
+                import asyncio
+                from backend.services.discord_notifier import trigger_discord_notification
+                try:
+                    loop = asyncio.get_running_loop()
+                    loop.create_task(trigger_discord_notification(world_id, "agent_alliance_formed", message, {"agent_a_id": agent_a_id, "agent_b_id": agent_b_id, "weight": new_w_a}))
+                except RuntimeError:
+                    import threading
+                    threading.Thread(target=lambda: asyncio.run(trigger_discord_notification(world_id, "agent_alliance_formed", message, {"agent_a_id": agent_a_id, "agent_b_id": agent_b_id, "weight": new_w_a})), daemon=True).start()
+            except Exception as e:
+                print(f"!!! Discord Alert Error: {e} !!!")
 
 def get_graph_data() -> Dict[str, Any]:
     """Exposes all agents as nodes and all active relationships as edges."""

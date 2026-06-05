@@ -1,9 +1,12 @@
 # Backend
 backend/.env
-backend/__pycache__/
-backend/*.pyc
+**/__pycache__/
+**/*.pyc
 backend/venv/
 backend/.pytest_cache/
+backend/data/world_state.json
+backend/data/users.json
+backend/data/sandbox_audit.log
 
 # Frontend
 frontend/node_modules/
