@@ -99,7 +99,7 @@ export const SourceEditor = () => {
         } else {
           setIsE2bActive(false);
         }
-      } catch (err) {
+      } catch {
         setIsE2bActive(false);
       }
     };
@@ -172,9 +172,14 @@ export const SourceEditor = () => {
     if (!isE2bActive && language === 'python') {
       const startTime = Date.now();
       try {
-        const win = window as any;
-        if (!win.loadPyodide) {
-          throw new Error("Pyodide library is not available. Please check your internet connection.");
+        interface PyodideInterface {
+          setStdout: (options: { write: (text: string) => number }) => void;
+          setStderr: (options: { write: (text: string) => number }) => void;
+          runPythonAsync: (code: string) => Promise<unknown>;
+        }
+        const win = window as typeof window & { loadPyodide?: (config: { indexURL: string }) => Promise<PyodideInterface> };
+        if (!isPyodideLoaded || !win.loadPyodide) {
+          throw new Error("Pyodide library is not available or not loaded yet. Please wait.");
         }
         
         let stdout = '';
@@ -207,12 +212,13 @@ export const SourceEditor = () => {
           provider: 'client-wasm (Pyodide)'
         });
         handleSaveToHistory();
-      } catch (err: any) {
+      } catch (err) {
         const endTime = Date.now();
+        const errorMessage = err instanceof Error ? err.message : 'WASM Execution failed.';
         setExecutionResult({
           success: false,
           output: '',
-          error: err.message || 'WASM Execution failed.',
+          error: errorMessage,
           execution_time: (endTime - startTime) / 1000,
           provider: 'client-wasm (Pyodide)'
         });

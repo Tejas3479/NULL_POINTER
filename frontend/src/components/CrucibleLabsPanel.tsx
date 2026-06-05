@@ -2,13 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { 
-  Terminal, 
   ShieldAlert, 
   HelpCircle, 
   CheckCircle, 
   AlertCircle, 
   Code, 
-  Play, 
   RefreshCw, 
   Lock, 
   KeyRound, 
@@ -59,10 +57,11 @@ export const CrucibleLabsPanel = () => {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLabs();
 
     // Listen to real-time solutions broadcasted over WebSocket
-    const handleLabSolved = (e: any) => {
+    const handleLabSolved = () => {
       fetchLabs();
     };
 
@@ -96,7 +95,7 @@ export const CrucibleLabsPanel = () => {
       if (data.success) {
         fetchLabs();
       }
-    } catch (err) {
+    } catch {
       setLab2Result({ success: false, message: "Network connection error." });
     } finally {
       setLab2Loading(false);
@@ -118,7 +117,7 @@ export const CrucibleLabsPanel = () => {
       if (data.success) {
         fetchLabs();
       }
-    } catch (err) {
+    } catch {
       setLab3Result({ success: false, message: "Network connection error." });
     } finally {
       setLab3Loading(false);

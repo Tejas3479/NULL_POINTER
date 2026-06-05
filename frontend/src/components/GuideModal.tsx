@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { HelpCircle, X, ShieldAlert, Terminal, Info, Network, Cpu, Play } from "lucide-react";
+import { HelpCircle, X, Cpu } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 type HelpTab = "basics" | "labs" | "editor" | "graph";

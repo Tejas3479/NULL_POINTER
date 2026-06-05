@@ -49,7 +49,7 @@ export const VisualDAGDebugger: React.FC<VisualDAGDebuggerProps> = ({ logs, worl
   // Extract latest trace per node
   const nodeTraces = useMemo(() => {
     const traces = world?.agent_traces || [];
-    const map: Record<string, any> = {};
+    const map: Record<string, NonNullable<SimulationWorld["agent_traces"]>[number]> = {};
     
     // Nodes to look for
     const nodes = ["supervisor", "specialist", "critic", "communicate", "end"];

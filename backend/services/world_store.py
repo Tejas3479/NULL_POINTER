@@ -6,6 +6,7 @@ import random
 import re
 import uuid
 import ast
+import hashlib
 import difflib
 from copy import deepcopy
 from datetime import datetime, timezone

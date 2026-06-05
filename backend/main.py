@@ -19,6 +19,7 @@ import os
 import json
 import random
 import uuid
+import time
 from backend.services.simulation_clock import SimulationClock
 from backend.services.snapshot_store import SnapshotStore
 
