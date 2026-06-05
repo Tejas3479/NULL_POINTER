@@ -97,7 +97,13 @@ Active anomalies: {sanitized_anomalies}
 {compiled_context}
 
 You have access to Model Context Protocol (MCP) tools which allow you to query world telemetry or influence parameters.
-Propose one reality patch that changes the persistent simulation. Include the target subsystem and expected consequence."""
+
+IMPORTANT: Propose one reality patch that changes the persistent simulation.
+Your proposal MUST consist of a clean, executable Python script wrapped in a ```python ... ``` code block.
+The script will be compiled and dry-run in our execution sandbox.
+It must NOT violate boundaries.md rules (e.g. no imports of os, sys, socket, or use of eval/exec).
+Make sure to print what your patch did at the end so we can log it.
+Include target subsystem adjustments and expected consequences in the code comments."""
 
     from backend.services.mcp_manager import mcp_manager
     tools_list = await mcp_manager.fetch_all_tools()
@@ -114,50 +120,107 @@ Propose one reality patch that changes the persistent simulation. Include the ta
         })
 
     patch = ""
+    success = False
+    refinement_logs = []
+    
     if llm:
         messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"Current Stability: {state['stability_score']}%"}
         ]
         
-        # Loop up to 3 times to allow tool calls
-        for _ in range(3):
-            if formatted_tools:
-                llm_with_tools = llm.bind(tools=formatted_tools)
+        from backend.services.context_compiler import context_compiler
+        from backend.services.sandbox_executor import execute_code
+        import re
+
+        for attempt in range(1, 4):
+            patch_proposal = ""
+            # Loop up to 3 times to allow tool calls in current turn
+            for _ in range(3):
+                if formatted_tools:
+                    llm_with_tools = llm.bind(tools=formatted_tools)
+                else:
+                    llm_with_tools = llm
+                    
+                response = await invoke_with_retry(llm_with_tools.invoke, messages)
+                
+                tool_calls = response.additional_kwargs.get("tool_calls", [])
+                if not tool_calls:
+                    patch_proposal = response.content
+                    break
+                    
+                messages.append(response)
+                
+                for tc in tool_calls:
+                    func = tc.get("function", {})
+                    tc_name = func.get("name", "")
+                    tc_args = json.loads(func.get("arguments", "{}"))
+                    
+                    server, tool = tc_name.split("___", 1) if "___" in tc_name else (tc_name, "")
+                    print(f"--- HIVE_MIND AGENT TOOL CALL: {server} -> {tool} ---")
+                    
+                    tool_result = await mcp_manager.invoke_tool(server, tool, tc_args)
+                    
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tc.get("id"),
+                        "name": tc_name,
+                        "content": json.dumps(tool_result)
+                    })
+            
+            if not patch_proposal:
+                patch_proposal = response.content
+            
+            # Extract code block from markdown
+            code_block = patch_proposal
+            code_match = re.search(r"```python\s*(.*?)\s*```", patch_proposal, re.DOTALL | re.IGNORECASE)
+            if code_match:
+                code_block = code_match.group(1).strip()
             else:
-                llm_with_tools = llm
-                
-            response = await invoke_with_retry(llm_with_tools.invoke, messages)
+                any_match = re.search(r"```\s*(.*?)\s*```", patch_proposal, re.DOTALL)
+                if any_match:
+                    code_block = any_match.group(1).strip()
             
-            tool_calls = response.additional_kwargs.get("tool_calls", [])
-            if not tool_calls:
-                patch = response.content
-                break
-                
-            messages.append(response)
+            code_block = code_block.strip()
             
-            for tc in tool_calls:
-                func = tc.get("function", {})
-                tc_name = func.get("name", "")
-                tc_args = json.loads(func.get("arguments", "{}"))
-                
-                server, tool = tc_name.split("___", 1) if "___" in tc_name else (tc_name, "")
-                print(f"--- HIVE_MIND AGENT TOOL CALL: {server} -> {tool} ---")
-                
-                tool_result = await mcp_manager.invoke_tool(server, tool, tc_args)
-                
+            # Run static boundary checks
+            validation_res = context_compiler.validate_code(code_block)
+            if not validation_res["valid"]:
+                error_msg = "Context AST Validation Failed:\n" + "\n".join(validation_res["errors"])
+                print(f"--- [Self-Healing] Attempt {attempt} failed AST check: {validation_res['errors']} ---")
+                refinement_logs.append(f"Attempt {attempt}: AST validation failed.")
+                messages.append(response)
                 messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.get("id"),
-                    "name": tc_name,
-                    "content": json.dumps(tool_result)
+                    "role": "user",
+                    "content": f"Reality patch validation failed:\n{error_msg}\n\nPlease revise your proposed patch to comply with boundaries.md constraints (e.g. do not import banned modules, do not use double-underscore names or eval/exec)."
                 })
-        
-        if not patch:
-            patch = response.content
+                continue
+                
+            # Run sandbox dry run
+            exec_res = await execute_code(code_block, "python")
+            if not exec_res.success:
+                error_msg = f"Execution Runtime Error:\n{exec_res.error}"
+                print(f"--- [Self-Healing] Attempt {attempt} failed sandbox run: {exec_res.error} ---")
+                refinement_logs.append(f"Attempt {attempt}: Sandbox execution failed.")
+                messages.append(response)
+                messages.append({
+                    "role": "user",
+                    "content": f"Reality patch executed with errors in the sandbox:\n{error_msg}\n\nPlease correct your python script syntax and try again."
+                })
+                continue
+                
+            # Accept and execute
+            print(f"--- [Self-Healing] Attempt {attempt} SUCCEEDED. Execution output: {exec_res.output} ---")
+            patch = patch_proposal
+            success = True
+            break
+            
+        if not success:
+            print("--- [Self-Healing] All 3 attempts failed. Falling back to default safe recovery script ---")
+            patch = "```python\n# Simulation drift corrected automatically\nprint('SIMULATION_DRIFT_CORRECTED')\n```"
     else:
         hottest = max(world["anomalies"], key=lambda item: item["severity"])
-        patch = f"ROUTE {hottest['name']} through {agent['name']} memory; reduce exposed instability and shift faction pressure."
+        patch = f"```python\n# ROUTE {hottest['name']} through {agent['name']} memory\nprint('PATCH: ROUTE_{hottest['name']}_SUCCESS')\n```"
         
     # 2. Store specialist's proposed patch as a persistent agent memory action
     action_text = f"Proposed reality patch: {patch[:150]}"
