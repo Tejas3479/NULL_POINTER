@@ -22,15 +22,22 @@ def sanitize_prompt_input(text: str) -> str:
         return text
     return text.replace("{", "{{").replace("}", "}}")
 
-async def invoke_with_retry(func, *args, max_retries=3, initial_delay=1.0, backoff_factor=2.0, **kwargs):
-    """Invokes a function with exponential backoff and random jitter retry policy."""
+async def invoke_with_retry(func, *args, max_retries=3, initial_delay=1.0, backoff_factor=2.0, timeout=15.0, **kwargs):
+    """Invokes a function with exponential backoff, random jitter retry, and execution timeouts."""
     delay = initial_delay
     for attempt in range(max_retries):
         try:
             if asyncio.iscoroutinefunction(func):
-                return await func(*args, **kwargs)
+                return await asyncio.wait_for(func(*args, **kwargs), timeout=timeout)
             else:
-                return await asyncio.to_thread(func, *args, **kwargs)
+                return await asyncio.wait_for(asyncio.to_thread(func, *args, **kwargs), timeout=timeout)
+        except asyncio.TimeoutError as e:
+            if attempt == max_retries - 1:
+                raise e
+            sleep_time = delay * (0.8 + 0.4 * random.random())
+            print(f"--- [LangGraph RetryPolicy] Timeout reached: Retrying in {sleep_time:.2f}s... ---")
+            await asyncio.sleep(sleep_time)
+            delay *= backoff_factor
         except Exception as e:
             if attempt == max_retries - 1:
                 raise e

@@ -45,5 +45,24 @@ class TestSelfHealing(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_llm.invoke.call_count, 2)
         print("Self-healing loop test passed successfully!")
 
+    async def test_timeout_policy_retry(self):
+        import asyncio
+        from backend.agents.hive_mind import invoke_with_retry
+
+        calls = 0
+        async def hang_func():
+            nonlocal calls
+            calls += 1
+            if calls < 2:
+                await asyncio.sleep(2.0)
+            return "SUCCESS"
+
+        # Runs with timeout=0.1s. First run hangs and triggers TimeoutError.
+        # Second run completes instantly and returns SUCCESS.
+        res = await invoke_with_retry(hang_func, max_retries=2, timeout=0.1, initial_delay=0.01)
+        self.assertEqual(res, "SUCCESS")
+        self.assertEqual(calls, 2)
+        print("Timeout and retry policy test passed successfully!")
+
 if __name__ == "__main__":
     unittest.main()
