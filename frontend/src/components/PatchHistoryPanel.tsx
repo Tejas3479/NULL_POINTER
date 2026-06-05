@@ -94,7 +94,7 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
       {/* Header */}
       <div className="px-5 py-4 border-b border-slate-800/60 bg-slate-950/60 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <History className="text-[#00FF41] animate-pulse" size={18} />
+          <History className="text-purple-400 animate-pulse" size={18} />
           <h2 className="font-orbitron text-sm font-bold uppercase tracking-widest text-white">Operator Patch History</h2>
         </div>
         <button 
@@ -111,7 +111,7 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
         <div className="col-span-12 md:col-span-4 border-r border-slate-800/40 bg-slate-950/25 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
           {loading && traces.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500 text-xs uppercase tracking-widest font-bold">
-              <RefreshCw className="animate-spin mb-3 text-[#00FF41]" size={18} />
+              <RefreshCw className="animate-spin mb-3 text-purple-400" size={18} />
               Loading patch history...
             </div>
           ) : traces.length === 0 ? (
@@ -347,7 +347,7 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
               </motion.div>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-slate-500 text-xs uppercase tracking-wider font-bold">
-                <ShieldCheck className="mb-2 opacity-30 text-[#00FF41] animate-bounce" size={24} />
+                <ShieldCheck className="mb-2 opacity-30 text-purple-400 animate-bounce" size={24} />
                 No trace selected. Select a patch attempt ledger item to explore diagnostics.
               </div>
             )}
@@ -357,8 +357,8 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 255, 65, 0.02); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 255, 65, 0.15); border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(168, 85, 247, 0.02); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.15); border-radius: 2px; }
       `}</style>
     </div>
   );

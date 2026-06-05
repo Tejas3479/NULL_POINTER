@@ -30,7 +30,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
   }, [logs]);
 
   return (
-    <main className="p-6 max-w-[1800px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden relative font-mono text-[#00FF41] bg-black">
+    <main className="p-6 max-w-[1800px] mx-auto grid grid-cols-12 gap-6 h-screen max-h-screen overflow-hidden relative font-mono text-slate-100 bg-slate-950">
       {/* CRT Scanline Scanline Effects */}
       <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-25 mix-blend-overlay" />
 
@@ -50,7 +50,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
       </AnimatePresence>
 
       {/* Spectate Banner Header */}
-      <header className="col-span-12 flex items-center justify-between mb-2 border-b border-[#00FF41]/20 pb-4">
+      <header className="col-span-12 flex items-center justify-between mb-2 border-b border-slate-900 pb-4">
         <div className="flex items-center gap-4">
           <div className="bg-amber-500/10 p-2 rounded border border-amber-500/30">
             <Lock className="text-amber-500" size={24} />
@@ -115,7 +115,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
 
           <a
             href="/login"
-            className="px-4 py-2 bg-[#00FF41] hover:bg-[#00FF41]/80 text-black font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(0,255,65,0.2)]"
+            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-orbitron text-xs font-black uppercase tracking-wider rounded cursor-pointer transition-all duration-300 flex items-center gap-1.5 shadow-[0_0_15px_rgba(168,85,247,0.3)]"
           >
             <LogIn size={14} />
             LOGIN TO INTERACT
@@ -126,8 +126,8 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
       {/* Main Layout Grid */}
       <div className="col-span-12 xl:col-span-7 flex flex-col gap-6 overflow-hidden h-full relative">
         {/* Terminal Logs (HUD/Chronicle view) */}
-        <div className="flex-1 w-full h-full bg-black text-[#00FF41] font-mono overflow-hidden flex flex-col border border-[#00FF41]/40 rounded-sm relative">
-          <div className="flex items-center justify-between px-4 py-2 bg-[#00FF41]/10 border-b border-[#00FF41]/30">
+        <div className="flex-1 w-full h-full bg-slate-950/20 backdrop-blur-md text-slate-300 font-mono overflow-hidden flex flex-col border border-slate-900 rounded-lg relative">
+          <div className="flex items-center justify-between px-4 py-2 bg-slate-900/40 border-b border-slate-900">
             <span className="text-[10px] font-black tracking-widest uppercase">Simulation Output Ledger</span>
             <span className="text-[10px] text-amber-500 font-bold uppercase select-none flex items-center gap-1">
               <Lock size={10} /> Spectator Session
@@ -143,8 +143,8 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
                   log.type === 'player' ? 'text-white' :
                   log.type === 'system' ? 'text-cyan-400 italic' :
                   log.type === 'error' ? 'text-red-600 font-black' :
-                  log.type === 'success' ? 'text-[#00FF41] brightness-125' :
-                  'text-[#00FF41]'
+                  log.type === 'success' ? 'text-emerald-400 font-bold' :
+                  'text-slate-300'
                 }`}
               >
                 <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
@@ -154,7 +154,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
           </div>
 
           {/* Locked Command Bar Overlay */}
-          <div className="p-4 bg-black/90 border-t border-[#00FF41]/20 flex items-center justify-between relative group">
+          <div className="p-4 bg-slate-950/60 border-t border-slate-900 flex items-center justify-between relative group">
             <div className="absolute inset-0 z-20 bg-black/70 backdrop-blur-[1px] flex items-center justify-center border border-amber-500/20">
               <button
                 onClick={() => triggerToast("Login required")}

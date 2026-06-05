@@ -294,11 +294,11 @@ function WorldCreatorWizardContent() {
 
   if (loadingRemix) {
     return (
-      <main className="min-h-screen bg-black text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
+      <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-40 mix-blend-overlay" />
         <div className="text-center space-y-4 relative z-10">
-          <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin mx-auto" />
-          <p className="text-xs uppercase tracking-widest text-[#00FF41]/60 font-bold">Synchronizing remix settings configurations...</p>
+          <div className="w-8 h-8 border-2 border-t-transparent border-purple-500 rounded-full animate-spin mx-auto" />
+          <p className="text-xs uppercase tracking-widest text-purple-400 font-bold">Synchronizing remix settings configurations...</p>
         </div>
       </main>
     );
@@ -306,11 +306,11 @@ function WorldCreatorWizardContent() {
 
   if (launching) {
     return (
-      <main className="min-h-screen bg-black text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
+      <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-40 mix-blend-overlay" />
         <div className="text-center space-y-4 relative z-10">
-          <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin mx-auto" />
-          <p className="text-xs uppercase tracking-widest text-[#00FF41]/60 font-bold">Instantiating quantum timelines...</p>
+          <div className="w-8 h-8 border-2 border-t-transparent border-cyan-500 rounded-full animate-spin mx-auto" />
+          <p className="text-xs uppercase tracking-widest text-cyan-400 font-bold">Instantiating quantum timelines...</p>
         </div>
       </main>
     );
@@ -719,10 +719,10 @@ function WorldCreatorWizardContent() {
 export default function CreateWorldPage() {
   return (
     <Suspense fallback={
-      <main className="min-h-screen bg-black text-[#00FF41] font-mono flex items-center justify-center p-6 relative overflow-hidden">
+      <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
         <div className="text-center space-y-4">
-          <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin mx-auto" />
-          <p className="text-xs uppercase tracking-widest text-[#00FF41]/60 font-bold">Booting creation module...</p>
+          <div className="w-8 h-8 border-2 border-t-transparent border-purple-500 rounded-full animate-spin mx-auto" />
+          <p className="text-xs uppercase tracking-widest text-purple-400 font-bold">Booting creation module...</p>
         </div>
       </main>
     }>

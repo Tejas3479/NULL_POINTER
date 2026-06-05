@@ -159,7 +159,7 @@ export default function ChronicleTimelinePage() {
       <section className="max-w-[1000px] mx-auto relative min-h-[400px] pb-12">
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <div className="w-8 h-8 border-2 border-t-transparent border-[#00FF41] rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-t-transparent border-cyan-400 rounded-full animate-spin" />
             <p className="text-xs uppercase tracking-widest text-slate-600 font-bold">Querying temporal databases...</p>
           </div>
         ) : filteredEntries.length === 0 ? (

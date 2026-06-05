@@ -117,9 +117,9 @@ export const DebuggerCore = ({
   };
 
   return (
-    <div className="relative w-full h-full bg-black text-[#00FF41] font-mono overflow-hidden flex flex-col border border-[#00FF41]/40 shadow-[0_0_30px_rgba(0,255,65,0.15)] rounded-sm">
+    <div className="relative w-full h-full bg-slate-950/20 backdrop-blur-md text-slate-100 font-mono overflow-hidden flex flex-col border border-slate-900 shadow-[0_0_30px_rgba(168,85,247,0.1)] rounded-lg">
       {/* Matrix Background Effect */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none overflow-hidden text-[8px] leading-[8px] select-none">
+      <div className="absolute inset-0 opacity-[0.015] text-purple-400 pointer-events-none overflow-hidden text-[8px] leading-[8px] select-none">
         {matrixRows.map((row, i) => (
           <div key={i} className="whitespace-nowrap animate-pulse" style={{ animationDelay: `${i * 100}ms` }}>
             {row}
@@ -136,21 +136,21 @@ export const DebuggerCore = ({
         className="flex-1 flex flex-col min-h-0 relative z-10"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 bg-[#00FF41]/10 border-b border-[#00FF41]/30 backdrop-blur-sm">
+        <div className="flex items-center justify-between px-4 py-2 bg-slate-950/45 border-b border-slate-900 backdrop-blur-sm">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#00FF41]' : 'bg-red-500'} animate-ping`} />
-              <span className="text-[11px] font-black tracking-[0.3em] uppercase">DEBUG_INTERFACE_V.0.9</span>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-cyan-400' : 'bg-red-500'} animate-ping`} />
+              <span className="text-[11px] font-black tracking-[0.3em] uppercase text-slate-200">DEBUG_INTERFACE_V.0.9</span>
             </div>
             {/* View Mode Toggle */}
-            <div className="flex bg-[#00FF41]/5 border border-[#00FF41]/20 rounded p-0.5 select-none">
+            <div className="flex bg-purple-950/20 border border-purple-500/20 rounded p-0.5 select-none">
               <button
                 type="button"
                 onClick={() => setViewMode('terminal')}
                 className={`px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest rounded transition-all cursor-pointer ${
                   viewMode === 'terminal' 
-                    ? 'bg-[#00FF41] text-black font-extrabold' 
-                    : 'text-[#00FF41]/60 hover:text-[#00FF41]'
+                    ? 'bg-purple-600 text-white font-extrabold' 
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 Terminal
@@ -160,8 +160,8 @@ export const DebuggerCore = ({
                 onClick={() => setViewMode('dag')}
                 className={`px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest rounded transition-all cursor-pointer ${
                   viewMode === 'dag' 
-                    ? 'bg-[#00FF41] text-black font-extrabold' 
-                    : 'text-[#00FF41]/60 hover:text-[#00FF41]'
+                    ? 'bg-purple-600 text-white font-extrabold' 
+                    : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
                 DAG Map
@@ -169,7 +169,7 @@ export const DebuggerCore = ({
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 text-[10px] font-black ${stability < 40 ? 'text-red-500 animate-bounce' : 'text-[#00FF41]'}`}>
+            <div className={`flex items-center gap-2 text-[10px] font-black ${stability < 40 ? 'text-red-500 animate-bounce' : 'text-cyan-400'}`}>
               <AlertTriangle size={12} />
               <span className="tracking-tighter">STABILITY: {stability}%</span>
             </div>
@@ -269,8 +269,8 @@ export const DebuggerCore = ({
                         log.type === 'player' ? 'text-white' : 
                         log.type === 'system' ? 'text-cyan-400 italic' :
                         log.type === 'error' ? 'text-red-600 font-black uppercase tracking-tighter' :
-                        log.type === 'success' ? 'text-[#00FF41] brightness-125' :
-                        'text-[#00FF41]'
+                        log.type === 'success' ? 'text-emerald-400 font-bold' :
+                        'text-slate-300'
                       }`}
                     >
                       <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
@@ -284,14 +284,14 @@ export const DebuggerCore = ({
               </div>
 
               {/* Neural Feed Sidebar (Internal) */}
-              <div className="hidden xl:block w-64 border-l border-[#00FF41]/20 p-2 bg-black/50 overflow-hidden animate-fade-in">
+              <div className="hidden xl:block w-64 border-l border-purple-500/20 p-2 bg-slate-950/20 backdrop-blur-sm overflow-hidden animate-fade-in">
                  <NeuralNet isAttacked={!!activeAttack} />
-                 <div className="mt-4 p-2 border border-[#00FF41]/10 text-[9px] text-[#00FF41]/40 uppercase leading-tight font-bold">
+                 <div className="mt-4 p-2 border border-purple-500/10 text-[9px] text-slate-500 uppercase leading-tight font-bold">
                     Neural_Web Visualization: Active
                     <br/>
                     Vector_Space_Recalculation...
                     <br/>
-                    Status: {activeAttack ? 'BREACHED' : 'INFILTRATED'}
+                    Status: <span className={activeAttack ? 'text-red-400' : 'text-cyan-400'}>{activeAttack ? 'BREACHED' : 'INFILTRATED'}</span>
                  </div>
               </div>
             </>
@@ -305,20 +305,20 @@ export const DebuggerCore = ({
         {/* Command Line */}
         <form 
           onSubmit={handleSubmit}
-          className="p-4 bg-black/80 border-t border-[#00FF41]/30 flex items-center gap-4 group focus-within:border-[#00FF41]"
+          className="p-4 bg-slate-950/60 border-t border-slate-900 flex items-center gap-4 group focus-within:border-purple-500/60"
         >
-          <div className="text-[#00FF41] font-black select-none shrink-0 text-xs tracking-widest">
+          <div className="text-cyan-400 font-black select-none shrink-0 text-xs tracking-widest">
             {isConnected ? 'ROOT' : 'OFFLINE'}@NULL_POINTER:~$
           </div>
           <input 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            className="flex-1 bg-transparent border-none outline-none text-[#00FF41] placeholder:text-[#00FF41]/20 font-mono text-sm caret-[#00FF41]"
+            className="flex-1 bg-transparent border-none outline-none text-white placeholder:text-slate-600 font-mono text-sm caret-cyan-400"
             placeholder={activeAttack ? "ENTER PATCH DESCRIPTION..." : "AWAITING DEBUG COMMAND..."}
             autoFocus
           />
-          <button type="submit" className="text-[#00FF41] hover:scale-110 transition-all opacity-50 group-focus-within:opacity-100">
+          <button type="submit" className="text-cyan-400 hover:scale-110 transition-all opacity-50 group-focus-within:opacity-100 cursor-pointer">
             <Send size={18} />
           </button>
         </form>
@@ -326,8 +326,8 @@ export const DebuggerCore = ({
 
       <style jsx global>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(0, 255, 65, 0.02); }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 255, 65, 0.15); border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(168, 85, 247, 0.02); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(168, 85, 247, 0.15); border-radius: 2px; }
       `}</style>
     </div>
   );
