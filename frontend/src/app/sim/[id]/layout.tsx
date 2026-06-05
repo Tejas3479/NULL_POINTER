@@ -5,6 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSimulationStore } from '@/store/simulationStore';
 import { GlitchText } from '@/components/GlitchText';
+import { HITLGateModal } from '@/components/HITLGateModal';
 import { 
   Activity, 
   Map, 
@@ -45,7 +46,8 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
     userRole, 
     initSocket,
     setUsername,
-    setUserRole
+    setUserRole,
+    world
   } = useSimulationStore();
 
   // 1. Auth check globally for layout
@@ -310,6 +312,11 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
           </motion.div>
         </AnimatePresence>
       </main>
+      {/* HITL approvals gate overlay */}
+      <HITLGateModal 
+        approvals={world?.pending_approvals || []} 
+        onResolved={() => {}} 
+      />
     </div>
   );
 }

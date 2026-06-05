@@ -22,7 +22,35 @@ def sanitize_prompt_input(text: str) -> str:
         return text
     return text.replace("{", "{{").replace("}", "}}")
 
+async def invoke_with_retry(func, *args, max_retries=3, initial_delay=1.0, backoff_factor=2.0, **kwargs):
+    """Invokes a function with exponential backoff and random jitter retry policy."""
+    delay = initial_delay
+    for attempt in range(max_retries):
+        try:
+            if asyncio.iscoroutinefunction(func):
+                return await func(*args, **kwargs)
+            else:
+                return await asyncio.to_thread(func, *args, **kwargs)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            sleep_time = delay * (0.8 + 0.4 * random.random())
+            print(f"--- [LangGraph RetryPolicy] Attempt {attempt + 1} failed: {e}. Retrying in {sleep_time:.2f}s... ---")
+            await asyncio.sleep(sleep_time)
+            delay *= backoff_factor
+
+import asyncio
+import json
+
 def specialist_node(state: SimState):
+    # Standard specialist_node is synchronous, but we can call an async wrapper or convert it to async.
+    # To keep compatibility with other synchronous graph executions if uvicorn triggers it, we can run it using an async event loop,
+    # or make the node async. LangGraph supports async nodes. Let's define the node as async:
+    pass
+
+async def specialist_node_async(state: SimState):
+    import time
+    start_time = time.perf_counter()
     agent = state.get("selected_agent") or world_store.choose_agent()
     archetype = world_store.archetype_for(agent["archetype_id"])
     world = world_store.snapshot()
@@ -53,6 +81,9 @@ def specialist_node(state: SimState):
     sanitized_factions = sanitize_prompt_input(factions)
     sanitized_anomalies = sanitize_prompt_input(anomalies)
     
+    from backend.services.context_compiler import context_compiler
+    compiled_context = context_compiler.compile_context()
+
     prompt = f"""You are {sanitized_agent_name}, an evolvable NULL_POINTER agent.
 Role: {sanitized_role}
 Temperament: {sanitized_temperament}
@@ -63,13 +94,67 @@ Persistent memory:
 Current factions: {sanitized_factions}
 Active anomalies: {sanitized_anomalies}
 
+{compiled_context}
+
+You have access to Model Context Protocol (MCP) tools which allow you to query world telemetry or influence parameters.
 Propose one reality patch that changes the persistent simulation. Include the target subsystem and expected consequence."""
+
+    from backend.services.mcp_manager import mcp_manager
+    tools_list = await mcp_manager.fetch_all_tools()
+    
+    formatted_tools = []
+    for t in tools_list:
+        formatted_tools.append({
+            "type": "function",
+            "function": {
+                "name": f"{t['server']}___{t['name']}",
+                "description": t.get("description", ""),
+                "parameters": t.get("inputSchema", {"type": "object", "properties": {}})
+            }
+        })
+
+    patch = ""
     if llm:
-        response = llm.invoke([
+        messages = [
             {"role": "system", "content": prompt},
             {"role": "user", "content": f"Current Stability: {state['stability_score']}%"}
-        ])
-        patch = response.content
+        ]
+        
+        # Loop up to 3 times to allow tool calls
+        for _ in range(3):
+            if formatted_tools:
+                llm_with_tools = llm.bind(tools=formatted_tools)
+            else:
+                llm_with_tools = llm
+                
+            response = await invoke_with_retry(llm_with_tools.invoke, messages)
+            
+            tool_calls = response.additional_kwargs.get("tool_calls", [])
+            if not tool_calls:
+                patch = response.content
+                break
+                
+            messages.append(response)
+            
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                tc_name = func.get("name", "")
+                tc_args = json.loads(func.get("arguments", "{}"))
+                
+                server, tool = tc_name.split("___", 1) if "___" in tc_name else (tc_name, "")
+                print(f"--- HIVE_MIND AGENT TOOL CALL: {server} -> {tool} ---")
+                
+                tool_result = await mcp_manager.invoke_tool(server, tool, tc_args)
+                
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.get("id"),
+                    "name": tc_name,
+                    "content": json.dumps(tool_result)
+                })
+        
+        if not patch:
+            patch = response.content
     else:
         hottest = max(world["anomalies"], key=lambda item: item["severity"])
         patch = f"ROUTE {hottest['name']} through {agent['name']} memory; reduce exposed instability and shift faction pressure."
@@ -79,13 +164,31 @@ Propose one reality patch that changes the persistent simulation. Include the ta
     action_emb = get_embedding(action_text)
     store_memory(agent["id"], action_text, action_emb)
     
+    latency = round((time.perf_counter() - start_time) * 1000, 2)
+    try:
+        from backend.utils.tracer import record_execution_trace
+        record_execution_trace(
+            agent_name=agent["name"],
+            node_name="specialist",
+            inputs={"stability_score": state.get("stability_score", 100)},
+            outputs={"proposed_patch": patch, "agent_source": agent["name"]},
+            latency_ms=latency
+        )
+    except Exception as e:
+        print(f"!!! Tracing error in specialist_node: {e} !!!")
+        
     return {"proposed_patch": patch, "agent_source": agent["name"], "selected_agent": agent}
 
-def critic_node(state: SimState):
+# We define the specialist_node as the async handler
+specialist_node = specialist_node_async
+
+async def critic_node(state: SimState):
     """Reviews the patch for quality and chaos."""
+    import time
+    start_time = time.perf_counter()
     print(f"--- HIVE_MIND: CRITIC REVIEWING {state['agent_source']} ---")
     if llm:
-        response = llm.invoke([
+        response = await invoke_with_retry(llm.invoke, [
             {"role": "system", "content": CRITIC_PROMPT},
             {"role": "user", "content": f"Patch to review: {state['proposed_patch']}"}
         ])
@@ -93,6 +196,20 @@ def critic_node(state: SimState):
     else:
         decision = "ACCEPTED"
     print(f"--- HIVE_MIND: CRITIC DECISION: {decision} ---")
+    
+    latency = round((time.perf_counter() - start_time) * 1000, 2)
+    try:
+        from backend.utils.tracer import record_execution_trace
+        record_execution_trace(
+            agent_name="System Integrity Critic",
+            node_name="critic",
+            inputs={"proposed_patch": state.get("proposed_patch")},
+            outputs={"decision": decision},
+            latency_ms=latency
+        )
+    except Exception as e:
+        print(f"!!! Tracing error in critic_node: {e} !!!")
+        
     return {"decision": decision}
 
 def communicate_node(state: SimState):

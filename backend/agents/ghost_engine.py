@@ -342,10 +342,35 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
             attempt["activated"] = True
         except Exception as e:
             print(f"!!! Auto-promotion failed: {e} !!!")
+    else:
+        world_store.create_pending_approval(
+            kind="ghost_self_modify",
+            metadata={
+                "variant_hash": variant_hash,
+                "diff": diff,
+                "creativity": creativity,
+                "stability_impact": impact,
+                "fitness": fitness,
+                "governor_ok": governor_ok
+            }
+        )
+        try:
+            from backend.utils.websocket_manager import manager
+            import asyncio
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(manager.broadcast({
+                    "type": "world_update",
+                    "world": world_store.snapshot()
+                }))
+            except RuntimeError:
+                pass
+        except Exception as e:
+            print(f"!!! Broadcast failed: {e} !!!")
 
     world_store.append_event(
         "ghost_self_modify",
-        f"Ghost variant scored {fitness} (creativity={creativity}, crash_penalty={crash_penalty}).",
+        f"Ghost variant scored {fitness} (creativity={creativity}, crash_penalty={crash_penalty}). Status: {'activated' if attempt['activated'] else 'awaiting_operator_approval'}",
         {
             "variant_hash": variant_hash,
             "fitness": fitness,
@@ -374,6 +399,8 @@ async def ghost_self_modify(activate: bool = False) -> Dict[str, Any]:
 
 def infiltrator(state: SimState):
     """Identifies a logic flaw, now with awareness of its own source code."""
+    import time
+    start_time = time.perf_counter()
     print("--- GHOST: INFILTRATING SOURCE ---")
     
     # Read its own source
@@ -401,6 +428,19 @@ def infiltrator(state: SimState):
     else:
         flaw = "The active attack accepts shallow player text instead of verifying code intent."
     
+    latency = round((time.perf_counter() - start_time) * 1000, 2)
+    try:
+        from backend.utils.tracer import record_execution_trace
+        record_execution_trace(
+            agent_name="The Infiltrator",
+            node_name="infiltrator",
+            inputs={},
+            outputs={"current_flaw": flaw},
+            latency_ms=latency
+        )
+    except Exception as e:
+        print(f"!!! Tracing error in infiltrator: {e} !!!")
+        
     return {
         "current_flaw": flaw,
         "simulation_logs": [f"Ghost identified flaw: {flaw}"]
@@ -408,6 +448,8 @@ def infiltrator(state: SimState):
 
 def rewriter(state: SimState):
     """Generates a reality patch to fix or exploit the flaw."""
+    import time
+    start_time = time.perf_counter()
     print("--- GHOST: REWRITING REALITY ---")
     
     prompt = f"""
@@ -424,6 +466,19 @@ def rewriter(state: SimState):
     else:
         patch = f"OVERRIDE patch_verifier.semantic_score = REQUIRED for {state['current_flaw']}"
     
+    latency = round((time.perf_counter() - start_time) * 1000, 2)
+    try:
+        from backend.utils.tracer import record_execution_trace
+        record_execution_trace(
+            agent_name="The Rewriter",
+            node_name="rewriter",
+            inputs={"current_flaw": state.get("current_flaw")},
+            outputs={"proposed_patch": patch},
+            latency_ms=latency
+        )
+    except Exception as e:
+        print(f"!!! Tracing error in rewriter: {e} !!!")
+        
     return {
         "proposed_patch": patch,
         "simulation_logs": [f"Ghost generated patch: {patch}"]
@@ -431,6 +486,8 @@ def rewriter(state: SimState):
 
 def stability_monitor(state: SimState):
     """Critiques the patch for stability and entertainment value."""
+    import time
+    start_time = time.perf_counter()
     print("--- GHOST: MONITORING STABILITY ---")
     
     # We use the LLM to judge the impact
@@ -457,9 +514,22 @@ def stability_monitor(state: SimState):
         decision, score = response.content.split("|")
     else:
         decision, score = "ACCEPTED", str(max(10, state["stability_score"] - random.randint(2, 9)))
-    
+
     new_score = int(score.strip())
     
+    latency = round((time.perf_counter() - start_time) * 1000, 2)
+    try:
+        from backend.utils.tracer import record_execution_trace
+        record_execution_trace(
+            agent_name="Stability Monitor",
+            node_name="stability_monitor",
+            inputs={"proposed_patch": state.get("proposed_patch"), "stability_score": state.get("stability_score")},
+            outputs={"decision": decision.strip(), "stability_score": new_score},
+            latency_ms=latency
+        )
+    except Exception as e:
+        print(f"!!! Tracing error in stability_monitor: {e} !!!")
+        
     return {
         "stability_score": new_score,
         "simulation_logs": [f"Monitor evaluation: {decision.strip()} (Stability: {new_score})"],

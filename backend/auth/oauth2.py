@@ -199,11 +199,12 @@ def verify_clerk_token(token: str) -> Dict[str, Any]:
         print(f"Local session token fallback decode failed: {e}")
         
     # If all signature verifications fail, extract unverified claims (useful for local dev/testing without keys)
-    try:
-        claims = jwt.get_unverified_claims(token)
-        if claims:
-            return claims
-    except Exception:
-        pass
+    if os.getenv("ENVIRONMENT") != "production":
+        try:
+            claims = jwt.get_unverified_claims(token)
+            if claims:
+                return claims
+        except Exception:
+            pass
         
     raise HTTPException(status_code=401, detail="Invalid token")

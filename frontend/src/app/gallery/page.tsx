@@ -2,23 +2,37 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { 
   Globe, 
-  GitBranch, 
   Eye, 
-  Shield, 
   Search, 
   SlidersHorizontal, 
-  Radio, 
   BookOpen, 
   Calendar, 
   Zap,
-  RadioTower,
-  Lock,
-  ArrowRight
+  Lock
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+
+interface Anomaly {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  severity: number;
+  faction: string;
+}
+
+interface Agent {
+  id: string;
+  archetype_id: string;
+  name: string;
+  loyalty: string;
+  mood: string;
+  memory: string[];
+  active: boolean;
+}
 
 interface SimulationWorld {
   world_id: string;
@@ -29,15 +43,15 @@ interface SimulationWorld {
   stability: number;
   owner: string;
   view_count: number;
-  agents: any[];
+  agents: Agent[];
   share: {
     public: boolean;
     remixable?: boolean;
   };
   updated_at?: string;
-  anomalies?: any[];
-  lore?: any[];
-  events?: any[];
+  anomalies?: Anomaly[];
+  lore?: unknown[];
+  events?: unknown[];
 }
 
 function WorldThumbnail({ world }: { world: SimulationWorld }) {
@@ -47,7 +61,7 @@ function WorldThumbnail({ world }: { world: SimulationWorld }) {
   const width = 300;
   const height = 150;
   
-  const points = anomalies.map((a: any, i: number) => {
+  const points = anomalies.map((a) => {
     const x = ((a.x + 4) / 8) * (width - 80) + 40;
     const y = ((a.y + 3) / 6) * (height - 50) + 25;
     return { x, y, severity: a.severity || 50 };
@@ -63,8 +77,8 @@ function WorldThumbnail({ world }: { world: SimulationWorld }) {
       <rect width="100%" height="100%" fill="url(#grid)" />
       
       {/* Topology connection lines */}
-      {points.map((p1: any, i: number) => 
-        points.slice(i + 1).map((p2: any, j: number) => (
+      {points.map((p1, i: number) => 
+        points.slice(i + 1).map((p2, j: number) => (
           <line 
             key={`${i}-${j}`} 
             x1={p1.x} 
@@ -78,7 +92,7 @@ function WorldThumbnail({ world }: { world: SimulationWorld }) {
       )}
       
       {/* Node circles */}
-      {points.map((p: any, idx: number) => {
+      {points.map((p, idx: number) => {
         const isHighSeverity = p.severity > 60;
         const nodeColor = isHighSeverity ? '#ef4444' : '#38bdf8';
         return (
@@ -90,7 +104,7 @@ function WorldThumbnail({ world }: { world: SimulationWorld }) {
       })}
 
       {/* Spacing moving agents */}
-      {agents.slice(0, 10).map((a: any, idx: number) => {
+      {agents.slice(0, 10).map((a, idx: number) => {
         const x = 40 + (idx * 27) % (width - 80);
         const y = 25 + (idx * 13) % (height - 50);
         return (
@@ -109,7 +123,6 @@ function WorldThumbnail({ world }: { world: SimulationWorld }) {
 }
 
 export default function GalleryPage() {
-  const router = useRouter();
   const [worlds, setWorlds] = useState<SimulationWorld[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -225,14 +238,14 @@ export default function GalleryPage() {
 
           <div className="flex gap-1.5 shrink-0">
             {[
-              { id: 'popularity', label: 'Popularity', icon: <Eye size={10} /> },
-              { id: 'recency', label: 'Recency', icon: <Calendar size={10} /> },
-              { id: 'chaos', label: 'Chaos Index', icon: <Zap size={10} /> },
-              { id: 'narrative', label: 'Lore Depth', icon: <BookOpen size={10} /> },
+              { id: 'popularity' as const, label: 'Popularity', icon: <Eye size={10} /> },
+              { id: 'recency' as const, label: 'Recency', icon: <Calendar size={10} /> },
+              { id: 'chaos' as const, label: 'Chaos Index', icon: <Zap size={10} /> },
+              { id: 'narrative' as const, label: 'Lore Depth', icon: <BookOpen size={10} /> },
             ].map((opt) => (
               <button
                 key={opt.id}
-                onClick={() => setSortBy(opt.id as any)}
+                onClick={() => setSortBy(opt.id)}
                 className={`px-2.5 py-1.5 border rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all ${
                   sortBy === opt.id 
                     ? 'border-purple-500/50 bg-purple-950/20 text-purple-400' 

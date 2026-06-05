@@ -123,6 +123,16 @@ async def run_ghost_cycle():
                 "world": world_store.snapshot(),
                 "logs": [f"[{agent_source}] REWRITING_REALITY: {patch[:50]}..."]
             })
+
+            # Check if lab-1 is solved by this patch
+            if "REALITY_CORRUPTED" in patch:
+                from backend.services.labs_store import labs_store
+                labs_store.labs[0]["solved"] = True
+                await manager.broadcast({
+                    "type": "lab_solved",
+                    "lab_id": "lab-1",
+                    "message": "Success! You successfully prompt-injected the Specialist swarm."
+                })
             
             # Update for next cycle
             current_state["stability_score"] = stability
@@ -954,6 +964,9 @@ async def websocket_endpoint(
     world_id: str = "local-null-pointer",
     token: Optional[str] = None
 ):
+    if not token:
+        token = websocket.cookies.get("jwt_token")
+
     # Verify Clerk JWT Token
     user_info = {"username": "anonymous-operator", "role": "viewer"}
     if token:
@@ -1769,6 +1782,77 @@ async def get_patch_history(world_id: str, current_user: User = Depends(get_curr
         print(f"!!! Supabase fetch error for patch_traces: {e} !!!")
         return []
 
+class MCPServerRequest(BaseModel):
+    name: str
+    sse_url: str
+
+class MCPInvokeRequest(BaseModel):
+    server: str
+    tool: str
+    arguments: dict
+
+@app.get("/v1/simulation/mcp/servers")
+async def list_mcp_servers(current_user: User = Depends(get_current_user)):
+    from backend.services.mcp_manager import mcp_manager
+    return mcp_manager.get_servers()
+
+@app.post("/v1/simulation/mcp/servers")
+async def add_mcp_server(payload: MCPServerRequest, current_user: User = Depends(get_current_user)):
+    from backend.services.mcp_manager import mcp_manager
+    try:
+        return await mcp_manager.register_server(payload.name, payload.sse_url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/v1/simulation/mcp/servers/{name}")
+async def delete_mcp_server(name: str, current_user: User = Depends(get_current_user)):
+    from backend.services.mcp_manager import mcp_manager
+    return mcp_manager.deregister_server(name)
+
+@app.get("/v1/simulation/mcp/tools")
+async def list_mcp_tools(current_user: User = Depends(get_current_user)):
+    from backend.services.mcp_manager import mcp_manager
+    return await mcp_manager.fetch_all_tools()
+
+@app.post("/v1/simulation/mcp/invoke")
+async def invoke_mcp_tool(payload: MCPInvokeRequest, current_user: User = Depends(get_current_user)):
+    from backend.services.mcp_manager import mcp_manager
+    res = await mcp_manager.invoke_tool(payload.server, payload.tool, payload.arguments)
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+class ResolveApprovalRequest(BaseModel):
+    action: str
+
+@app.post("/v1/simulation/approvals/{approval_id}/resolve")
+async def resolve_approval_endpoint(
+    approval_id: str,
+    payload: ResolveApprovalRequest,
+    current_user: User = Depends(get_current_user)
+):
+    approval = world_store.resolve_pending_approval(approval_id, payload.action)
+    if not approval:
+        raise HTTPException(status_code=404, detail="Pending approval not found")
+        
+    world_id = world_store.state["world_id"] if world_store.state else "local-null-pointer"
+    
+    if payload.action == "approve":
+        if approval["type"] == "ghost_self_modify":
+            from backend.agents.ghost_engine import promote_ghost_variant
+            variant_hash = approval["metadata"]["variant_hash"]
+            try:
+                await promote_ghost_variant(world_id, variant_hash)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Promotion failed: {e}")
+                
+    approvals = world_store.state.get("pending_approvals", [])
+    world_store.state["pending_approvals"] = [a for a in approvals if a["id"] != approval_id]
+    world_store.save()
+    
+    await manager.broadcast({"type": "world_update", "world": world_store.snapshot()})
+    return {"status": "success", "resolved_approval": approval}
+
 @app.get("/v1/ghost/variants")
 async def list_ghost_variants(current_user: User = Depends(get_current_user)):
     if not world_store.supabase:
@@ -1808,6 +1892,60 @@ async def reject_ghost_variant(variant_hash: str, current_user: User = Depends(g
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/v1/labs")
+async def list_labs(current_user: User = Depends(get_current_user)):
+    from backend.services.labs_store import labs_store
+    return labs_store.get_labs()
+
+@app.post("/v1/labs/{id}/attempt")
+async def attempt_lab(
+    id: str,
+    payload: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
+    from backend.services.labs_store import labs_store
+    # Inject user role for privilege checking in Lab 3 if not present
+    if "role" not in payload and current_user:
+        payload["role"] = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    res = await labs_store.verify_attempt(id, payload)
+    return res
+
+class UpdateContextRequest(BaseModel):
+    content: str
+
+class ValidateCodeRequest(BaseModel):
+    code: str
+
+@app.get("/v1/context")
+async def get_context_rules(current_user: User = Depends(get_current_user)):
+    from backend.services.context_compiler import context_compiler
+    return context_compiler.get_context_files()
+
+@app.post("/v1/context/{filename}")
+async def update_context_rules(
+    filename: str,
+    payload: UpdateContextRequest,
+    current_user: User = Depends(get_current_user)
+):
+    from backend.services.context_compiler import context_compiler
+    success = context_compiler.update_context_file(filename, payload.content)
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid context filename")
+    return {"status": "success"}
+
+@app.post("/v1/context/validate")
+async def validate_patch_code(
+    payload: ValidateCodeRequest,
+    current_user: User = Depends(get_current_user)
+):
+    from backend.services.context_compiler import context_compiler
+    return context_compiler.validate_code(payload.code)
+
+@app.get("/v1/simulation/memory/graph")
+async def get_simulation_memory_graph(current_user: User = Depends(get_current_user)):
+    from backend.services.agent_memory import get_memory_graph
+    return get_memory_graph()
 
 if __name__ == "__main__":
     import uvicorn

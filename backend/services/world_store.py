@@ -100,12 +100,11 @@ def utc_now() -> str:
 
 class WorldStore:
     def __init__(self, path: Optional[Path] = None):
-        self.path = path
-        # if self.path:
-        #     self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path or (Path(__file__).resolve().parents[1] / "data" / "world_state.json")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.supabase = self._connect_supabase()
         if self.supabase is None:
-            raise RuntimeError("Supabase connection required for persistent simulation. Set SUPABASE_URL and SUPABASE_KEY.")
+            print("[WorldStore] WARNING: Supabase connection not configured. Falling back to local data store: backend/data/world_state.json")
         self.state = self._load()
 
     def _connect_supabase(self) -> Optional[Client]:
@@ -119,17 +118,18 @@ class WorldStore:
             return None
 
     def _load(self) -> Dict[str, Any]:
-        # remote = self._load_from_supabase()
-        # if remote:
-        #     return self._merge_defaults(remote)
-        # if not self.path.exists():
-        #     return deepcopy(BASE_WORLD)
-        # try:
-        #     loaded = json.loads(self.path.read_text(encoding="utf-8"))
-        #     return self._merge_defaults(loaded)
-        # except Exception:
-        #     return deepcopy(BASE_WORLD)
-        return None
+        if self.supabase:
+            remote = self._load_from_supabase()
+            if remote:
+                return self._merge_defaults(remote)
+        
+        if not self.path.exists():
+            return deepcopy(BASE_WORLD)
+        try:
+            loaded = json.loads(self.path.read_text(encoding="utf-8"))
+            return self._merge_defaults(loaded)
+        except Exception:
+            return deepcopy(BASE_WORLD)
 
     def _load_from_supabase(self) -> Optional[Dict[str, Any]]:
         if not self.supabase:
@@ -158,7 +158,25 @@ class WorldStore:
 
     def create_or_load_world(self, world_id: str) -> Dict[str, Any]:
         if not self.supabase:
-            raise RuntimeError("Supabase connection required for persistent simulation. Set SUPABASE_URL and SUPABASE_KEY.")
+            # Local fallback loading
+            if self.state and self.state.get("world_id") == world_id:
+                return self.state
+            
+            # Try loading state from path first
+            if self.path.exists():
+                try:
+                    loaded = json.loads(self.path.read_text(encoding="utf-8"))
+                    if loaded.get("world_id") == world_id:
+                        self.state = self._merge_defaults(loaded)
+                        return self.state
+                except Exception:
+                    pass
+            
+            new_state = deepcopy(BASE_WORLD)
+            new_state["world_id"] = world_id
+            self.state = new_state
+            self.save()
+            return self.state
         
         import time
         attempts = 3
@@ -264,23 +282,59 @@ class WorldStore:
                 ).execute()
             except Exception:
                 pass
+        
+        # Always save locally as a fallback and backup
+        try:
+            self.path.write_text(json.dumps(self.state, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"!!! Local Save Error: {e} !!!")
 
     def snapshot(self) -> Dict[str, Any]:
         return deepcopy(self.state)
 
     def append_event(self, kind: str, message: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        event = {
-            "id": str(uuid.uuid4()),
+        if not self.state:
+            return {}
+        events = self.state.setdefault("events", [])
+        new_event = {
+            "id": hashlib.sha1(f"{kind}:{message}:{utc_now()}".encode("utf-8")).hexdigest(),
             "kind": kind,
             "message": message,
-            "payload": payload or {},
-            "tick": self.state["tick"],
+            "tick": self.state.get("tick", 0),
             "created_at": utc_now(),
         }
-        self.state["events"].append(event)
-        self.state["events"] = self.state["events"][-80:]
+        if payload:
+            new_event.update(payload)
+        events.append(new_event)
         self.save()
-        return event
+        return new_event
+
+    def create_pending_approval(self, kind: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        import random
+        if not self.state:
+            return {}
+        approvals = self.state.setdefault("pending_approvals", [])
+        new_approval = {
+            "id": hashlib.sha1(f"{kind}:{utc_now()}:{random.random()}".encode("utf-8")).hexdigest(),
+            "type": kind,
+            "status": "pending",
+            "created_at": utc_now(),
+            "metadata": metadata
+        }
+        approvals.append(new_approval)
+        self.save()
+        return new_approval
+
+    def resolve_pending_approval(self, approval_id: str, action: str) -> Optional[Dict[str, Any]]:
+        if not self.state:
+            return None
+        approvals = self.state.setdefault("pending_approvals", [])
+        target = next((a for a in approvals if a["id"] == approval_id), None)
+        if target:
+            target["status"] = "approved" if action == "approve" else "rejected"
+            self.save()
+            return target
+        return None
 
     def advance_tick(self, stability: Optional[int] = None, heat: Optional[float] = None) -> Dict[str, Any]:
         self.state["tick"] += 1

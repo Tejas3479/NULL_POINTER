@@ -6,6 +6,9 @@ import { DebuggerCore } from '@/components/DebuggerCore';
 import { SourceEditor } from '@/components/SourceEditor';
 import { PatchHistoryPanel } from '@/components/PatchHistoryPanel';
 import { GhostEvolutionPanel } from '@/components/GhostEvolutionPanel';
+import { AgentTracer } from '@/components/AgentTracer';
+import { CrucibleLabsPanel } from '@/components/CrucibleLabsPanel';
+import { MemoryGraphPanel } from '@/components/MemoryGraphPanel';
 
 export default function DashboardPage() {
   const { 
@@ -15,10 +18,11 @@ export default function DashboardPage() {
     activeAttack, 
     sendCommand,
     presenceList,
-    worldId
+    worldId,
+    world
   } = useSimulationStore();
 
-  const [rightTab, setRightTab] = useState<'editor' | 'patches' | 'evolution'>('editor');
+  const [rightTab, setRightTab] = useState<'editor' | 'patches' | 'evolution' | 'traces' | 'labs' | 'memory'>('editor');
 
   return (
     <div className="flex-grow grid grid-cols-12 gap-6 p-6 h-full min-h-0 overflow-y-auto md:overflow-hidden select-none">
@@ -30,6 +34,7 @@ export default function DashboardPage() {
           isConnected={isConnected}
           activeAttack={activeAttack}
           sendCommand={sendCommand}
+          world={world}
         />
       </div>
 
@@ -85,6 +90,30 @@ export default function DashboardPage() {
           >
             Ghost Evolution
           </button>
+          <button 
+            onClick={() => setRightTab('traces')}
+            className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              rightTab === 'traces' ? 'text-blue-400 bg-purple-950/30 border border-blue-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Agent Tracing
+          </button>
+          <button 
+            onClick={() => setRightTab('labs')}
+            className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              rightTab === 'labs' ? 'text-amber-400 bg-purple-950/30 border border-amber-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Crucible Labs
+          </button>
+          <button 
+            onClick={() => setRightTab('memory')}
+            className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
+              rightTab === 'memory' ? 'text-purple-400 bg-purple-950/30 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Memory Graph
+          </button>
         </div>
 
         {/* Tab content */}
@@ -93,8 +122,14 @@ export default function DashboardPage() {
             <SourceEditor />
           ) : rightTab === 'patches' ? (
             <PatchHistoryPanel worldId={worldId || 'local-null-pointer'} />
-          ) : (
+          ) : rightTab === 'evolution' ? (
             <GhostEvolutionPanel worldId={worldId || 'local-null-pointer'} />
+          ) : rightTab === 'traces' ? (
+            <AgentTracer traces={world?.agent_traces || []} />
+          ) : rightTab === 'labs' ? (
+            <CrucibleLabsPanel />
+          ) : (
+            <MemoryGraphPanel />
           )}
         </div>
       </div>

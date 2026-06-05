@@ -2,15 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Script from 'next/script';
 import { 
-  Trophy, 
   Terminal, 
   Code2, 
   Cpu, 
   Copy, 
   Check, 
   ArrowLeft,
-  BookOpen,
   Info
 } from 'lucide-react';
 
@@ -26,8 +25,9 @@ export default function SdkDocsPage() {
     script.src = "/nullpointer-sdk.js";
     script.async = true;
     script.onload = () => {
-      if ((window as any).NP) {
-        (window as any).NP.init("local-null-pointer", "demo-sdk-badge");
+      const customWindow = window as unknown as { NP?: { init: (w: string, e: string) => void } };
+      if (customWindow.NP) {
+        customWindow.NP.init("local-null-pointer", "demo-sdk-badge");
       }
     };
     document.body.appendChild(script);
@@ -61,6 +61,7 @@ export default function SdkDocsPage() {
 
   return (
     <main className="min-h-screen bg-black text-slate-100 font-mono relative overflow-hidden flex flex-col">
+      <Script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js" strategy="lazyOnload" />
       {/* Scanline overlay */}
       <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-20 mix-blend-overlay" />
       <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#1e293b_1px,transparent_1px)] bg-[size:16px_16px]" />

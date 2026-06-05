@@ -47,7 +47,8 @@ export default function SettingsPage() {
       Promise.resolve().then(() => setSeedCounts(counts));
     }
     if (world?.share) {
-      setWebhookUrl(world.share.discord_webhook || "");
+      const discordWebhook = world.share.discord_webhook || "";
+      Promise.resolve().then(() => setWebhookUrl(discordWebhook));
     }
   }, [world]);
 

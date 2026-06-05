@@ -35,6 +35,30 @@ export interface SimulationWorld {
     discord_webhook?: string;
   };
   view_count?: number;
+  pending_approvals?: Array<{
+    id: string;
+    type: string;
+    status: string;
+    created_at: string;
+    metadata: {
+      variant_hash: string;
+      diff: string;
+      creativity: number;
+      stability_impact: number;
+      fitness: number;
+      governor_ok: boolean;
+    };
+  }>;
+  agent_traces?: Array<{
+    id: string;
+    timestamp: string;
+    agent_name: string;
+    node_name: string;
+    inputs: Record<string, unknown>;
+    outputs: Record<string, unknown>;
+    model: string;
+    latency_ms: number;
+  }>;
 }
 
 export interface ChronicleEntry {
@@ -149,18 +173,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       })
       .catch(() => undefined);
 
-    const getJwtToken = (): string => {
-      if (typeof document === 'undefined') return '';
-      const match = document.cookie.match(new RegExp('(^| )jwt_token=([^;]*)'));
-      return match ? decodeURIComponent(match[2]) : '';
-    };
-
-    const tokenVal = getJwtToken();
     const wsUrl = new URL(wsBaseUrl);
     wsUrl.searchParams.set("world_id", worldId);
-    if (tokenVal) {
-      wsUrl.searchParams.set("token", tokenVal);
-    }
 
     const socket = new WebSocket(wsUrl.toString());
     set({ socket, worldId, apiBase, isConnected: false });
@@ -267,6 +281,18 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
               chronicleEntries: [newEntry, ...state.chronicleEntries]
             };
           });
+        }
+      } else if (data.type === 'lab_solved') {
+        set((state) => ({
+          logs: [...state.logs, {
+            id: Date.now().toString(),
+            type: 'success',
+            text: `[CRUCIBLE CHALLENGE SOLVED] ${data.message}`,
+            timestamp
+          }]
+        }));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('lab_solved', { detail: data }));
         }
       }
     };

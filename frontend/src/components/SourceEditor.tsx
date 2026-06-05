@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import Script from 'next/script';
 import { 
   Code2, 
   Play, 
@@ -68,6 +69,10 @@ export const SourceEditor = () => {
   const [historyList, setHistoryList] = useState<HistoryItem[]>([]);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   
+  // E2B and Pyodide States
+  const [isE2bActive, setIsE2bActive] = useState<boolean>(true);
+  const [isPyodideLoaded, setIsPyodideLoaded] = useState<boolean>(false);
+  
   // Sandbox execution result
   const [executionResult, setExecutionResult] = useState<{
     success: boolean;
@@ -80,6 +85,26 @@ export const SourceEditor = () => {
 
   // Analysis result
   const [findings, setFindings] = useState<Finding[] | null>(null);
+
+  useEffect(() => {
+    // Check backend health/provider status
+    const checkSandboxHealth = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/v1/sandbox/health', {
+          credentials: 'include'
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setIsE2bActive(data.provider === 'e2b');
+        } else {
+          setIsE2bActive(false);
+        }
+      } catch (err) {
+        setIsE2bActive(false);
+      }
+    };
+    checkSandboxHealth();
+  }, []);
 
   useEffect(() => {
     // Load history list from localStorage
@@ -142,6 +167,60 @@ export const SourceEditor = () => {
     setIsPanelExpanded(true);
     setOutputTab('console');
     setExecutionResult(null);
+
+    // Redirect local python execution to Pyodide if E2B is disabled
+    if (!isE2bActive && language === 'python') {
+      const startTime = Date.now();
+      try {
+        const win = window as any;
+        if (!win.loadPyodide) {
+          throw new Error("Pyodide library is not available. Please check your internet connection.");
+        }
+        
+        let stdout = '';
+        const py = await win.loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.25.0/full/'
+        });
+        
+        py.setStdout({
+          write: (text: string) => {
+            stdout += text;
+            return text.length;
+          }
+        });
+        py.setStderr({
+          write: (text: string) => {
+            stdout += text;
+            return text.length;
+          }
+        });
+        
+        // Execute python code in client WASM sandbox
+        await py.runPythonAsync(code);
+        const endTime = Date.now();
+        
+        setExecutionResult({
+          success: true,
+          output: stdout,
+          error: '',
+          execution_time: (endTime - startTime) / 1000,
+          provider: 'client-wasm (Pyodide)'
+        });
+        handleSaveToHistory();
+      } catch (err: any) {
+        const endTime = Date.now();
+        setExecutionResult({
+          success: false,
+          output: '',
+          error: err.message || 'WASM Execution failed.',
+          execution_time: (endTime - startTime) / 1000,
+          provider: 'client-wasm (Pyodide)'
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     try {
       const res = await fetch('http://localhost:8000/v1/sandbox/execute', {
@@ -223,6 +302,11 @@ export const SourceEditor = () => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-slate-950/80 border border-slate-800 rounded-lg overflow-hidden shadow-2xl relative font-mono">
+      <Script
+        src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"
+        strategy="lazyOnload"
+        onLoad={() => setIsPyodideLoaded(true)}
+      />
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-900/60 border-b border-slate-800/80 select-none z-10">
         <div className="flex items-center gap-2">
@@ -234,6 +318,15 @@ export const SourceEditor = () => {
             className="bg-transparent text-xs font-semibold text-slate-300 border-b border-transparent hover:border-slate-700 focus:border-cyan-500 outline-none w-44 font-orbitron tracking-wider uppercase py-0.5"
             placeholder="snippet_name"
           />
+          {!isE2bActive && language === 'python' ? (
+            <span className="text-[8px] font-mono text-amber-400 bg-amber-950/30 border border-amber-500/20 px-1.5 py-0.5 rounded animate-pulse uppercase tracking-wider font-bold">
+              WASM Sandbox Active (Pyodide)
+            </span>
+          ) : (
+            <span className="text-[8px] font-mono text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+              Cloud Sandbox (E2B)
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">

@@ -7,11 +7,9 @@ import {
   Hourglass, 
   Sparkles, 
   Activity, 
-  Shield, 
   User, 
   RefreshCw, 
   ChevronRight,
-  Sparkle,
   Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -64,7 +62,10 @@ export default function LeaderboardPage() {
   };
 
   useEffect(() => {
-    fetchLeaderboard();
+    // Execute asynchronously to avoid calling setState synchronously within effect
+    Promise.resolve().then(() => {
+      fetchLeaderboard();
+    });
 
     // Polling every 30 seconds
     const interval = setInterval(() => {
@@ -127,7 +128,7 @@ export default function LeaderboardPage() {
       </header>
 
       {/* Refresh indicator banner */}
-      <div className="px-6 py-2.5 bg-slate-950/40 border-b border-slate-900 flex justify-between items-center text-[9px] uppercase font-bold text-slate-500 relative z-10 select-none">
+      <div className="px-6 py-2.5 bg-slate-950/40 border-b border-slate-900 flex justify-between items-center text-[9px] uppercase font-bold text-slate-500 relative z-10 select-none shrink-0">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
           <span>REAL-TIME AGGREGATIONS SYNCHRONIZED</span>
@@ -153,13 +154,13 @@ export default function LeaderboardPage() {
       {/* Main Tabs Navigation */}
       <div className="px-6 py-4 bg-slate-900/10 flex gap-2 border-b border-slate-900 relative z-10 select-none shrink-0 overflow-x-auto">
         {[
-          { id: 'survival', label: 'Longest Surviving', icon: <Hourglass size={12} />, desc: 'Timeline Tick Lifespan' },
-          { id: 'patches', label: 'Most Creative Patches', icon: <Sparkles size={12} />, desc: 'Average LLM Critic Score' },
-          { id: 'emergence', label: 'Emergent Complexity', icon: <Activity size={12} />, desc: 'Count of Emergence Events' }
+          { id: 'survival' as const, label: 'Longest Surviving', icon: <Hourglass size={12} />, desc: 'Timeline Tick Lifespan' },
+          { id: 'patches' as const, label: 'Most Creative Patches', icon: <Sparkles size={12} />, desc: 'Average LLM Critic Score' },
+          { id: 'emergence' as const, label: 'Emergent Complexity', icon: <Activity size={12} />, desc: 'Count of Emergence Events' }
         ].map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
+            onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2 border rounded text-left transition-all cursor-pointer flex flex-col gap-0.5 min-w-[200px] ${
               activeTab === tab.id
                 ? 'border-yellow-500/50 bg-yellow-500/5 text-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.05)]'

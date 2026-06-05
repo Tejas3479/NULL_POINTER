@@ -7,6 +7,8 @@ import { LogEntry, ActiveAttack } from '@/hooks/useSimulationSocket';
 import { GlitchText } from '@/components/GlitchText';
 import { useCyberVoice } from '@/hooks/useCyberVoice';
 import { NeuralNet } from '@/components/NeuralNet';
+import { VisualDAGDebugger } from '@/components/VisualDAGDebugger';
+import { SimulationWorld } from '@/store/simulationStore';
 
 export const DebuggerCore = ({ 
   stability, 
@@ -14,6 +16,7 @@ export const DebuggerCore = ({
   isConnected, 
   activeAttack, 
   sendCommand,
+  world,
   onStabilityChange 
 }: { 
   stability: number;
@@ -21,9 +24,11 @@ export const DebuggerCore = ({
   isConnected: boolean;
   activeAttack: ActiveAttack | null;
   sendCommand: (command: string) => Promise<void>;
+  world: SimulationWorld | null;
   onStabilityChange?: (s: number) => void;
 }) => {
   const { speak } = useCyberVoice();
+  const [viewMode, setViewMode] = useState<'terminal' | 'dag'>('terminal');
   const [input, setInput] = useState('');
   const [patchInput, setPatchInput] = useState('');
   const [isPatching, setIsPatching] = useState(false);
@@ -137,6 +142,31 @@ export const DebuggerCore = ({
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[#00FF41]' : 'bg-red-500'} animate-ping`} />
               <span className="text-[11px] font-black tracking-[0.3em] uppercase">DEBUG_INTERFACE_V.0.9</span>
             </div>
+            {/* View Mode Toggle */}
+            <div className="flex bg-[#00FF41]/5 border border-[#00FF41]/20 rounded p-0.5 select-none">
+              <button
+                type="button"
+                onClick={() => setViewMode('terminal')}
+                className={`px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest rounded transition-all cursor-pointer ${
+                  viewMode === 'terminal' 
+                    ? 'bg-[#00FF41] text-black font-extrabold' 
+                    : 'text-[#00FF41]/60 hover:text-[#00FF41]'
+                }`}
+              >
+                Terminal
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('dag')}
+                className={`px-2.5 py-0.5 text-[8px] font-black uppercase tracking-widest rounded transition-all cursor-pointer ${
+                  viewMode === 'dag' 
+                    ? 'bg-[#00FF41] text-black font-extrabold' 
+                    : 'text-[#00FF41]/60 hover:text-[#00FF41]'
+                }`}
+              >
+                DAG Map
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <div className={`flex items-center gap-2 text-[10px] font-black ${stability < 40 ? 'text-red-500 animate-bounce' : 'text-[#00FF41]'}`}>
@@ -220,48 +250,56 @@ export const DebuggerCore = ({
           )}
         </AnimatePresence>
 
-        {/* Main Terminal View */}
+        {/* Main Terminal View / DAG Map View */}
         <div className="flex-1 flex min-h-0 relative">
-          <div 
-            ref={scrollRef}
-            className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-2 font-mono text-sm relative z-10"
-          >
-            <AnimatePresence initial={false}>
-              {logs.map((log) => (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, x: -5 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className={`flex gap-3 leading-relaxed ${
-                    log.type === 'ghost' ? 'text-red-500 font-bold' : 
-                    log.type === 'player' ? 'text-white' : 
-                    log.type === 'system' ? 'text-cyan-400 italic' :
-                    log.type === 'error' ? 'text-red-600 font-black uppercase tracking-tighter' :
-                    log.type === 'success' ? 'text-[#00FF41] brightness-125' :
-                    'text-[#00FF41]'
-                  }`}
-                >
-                  <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
-                  <span className="break-words">
-                    {log.type === 'ghost' && <span className="mr-2">GHOST:</span>}
-                    {log.text}
-                  </span>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
+          {viewMode === 'terminal' ? (
+            <>
+              <div 
+                ref={scrollRef}
+                className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-2 font-mono text-sm relative z-10"
+              >
+                <AnimatePresence initial={false}>
+                  {logs.map((log) => (
+                    <motion.div
+                      key={log.id}
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className={`flex gap-3 leading-relaxed ${
+                        log.type === 'ghost' ? 'text-red-500 font-bold' : 
+                        log.type === 'player' ? 'text-white' : 
+                        log.type === 'system' ? 'text-cyan-400 italic' :
+                        log.type === 'error' ? 'text-red-600 font-black uppercase tracking-tighter' :
+                        log.type === 'success' ? 'text-[#00FF41] brightness-125' :
+                        'text-[#00FF41]'
+                      }`}
+                    >
+                      <span className="opacity-30 shrink-0 select-none">[{log.timestamp}]</span>
+                      <span className="break-words">
+                        {log.type === 'ghost' && <span className="mr-2">GHOST:</span>}
+                        {log.text}
+                      </span>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </div>
 
-          {/* Neural Feed Sidebar (Internal) */}
-          <div className="hidden xl:block w-64 border-l border-[#00FF41]/20 p-2 bg-black/50 overflow-hidden">
-             <NeuralNet isAttacked={!!activeAttack} />
-             <div className="mt-4 p-2 border border-[#00FF41]/10 text-[9px] text-[#00FF41]/40 uppercase leading-tight font-bold">
-                Neural_Web Visualization: Active
-                <br/>
-                Vector_Space_Recalculation...
-                <br/>
-                Status: {activeAttack ? 'BREACHED' : 'INFILTRATED'}
-             </div>
-          </div>
+              {/* Neural Feed Sidebar (Internal) */}
+              <div className="hidden xl:block w-64 border-l border-[#00FF41]/20 p-2 bg-black/50 overflow-hidden animate-fade-in">
+                 <NeuralNet isAttacked={!!activeAttack} />
+                 <div className="mt-4 p-2 border border-[#00FF41]/10 text-[9px] text-[#00FF41]/40 uppercase leading-tight font-bold">
+                    Neural_Web Visualization: Active
+                    <br/>
+                    Vector_Space_Recalculation...
+                    <br/>
+                    Status: {activeAttack ? 'BREACHED' : 'INFILTRATED'}
+                 </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 p-3 flex min-h-0 z-10 overflow-hidden">
+              <VisualDAGDebugger logs={logs} world={world} />
+            </div>
+          )}
         </div>
 
         {/* Command Line */}

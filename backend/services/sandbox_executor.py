@@ -25,6 +25,11 @@ except Exception:  # Docker is an optional fallback dependency.
     DockerException = Exception
     ImageNotFound = Exception
 
+try:
+    from e2b_code_interpreter import CodeInterpreter
+except ImportError:
+    CodeInterpreter = None
+
 
 SUPPORTED_LANGUAGES = {"python", "javascript"}
 DEFAULT_TIMEOUT_SECONDS = 5
@@ -354,9 +359,69 @@ def _execute_with_docker(code: str, language: str, timeout_seconds: int) -> Exec
                 pass
 
 
+def _execute_with_e2b(code: str, language: str, timeout_seconds: int) -> ExecutionResult:
+    started = time.perf_counter()
+    provider = "e2b"
+    if CodeInterpreter is None:
+        return _result(
+            success=False,
+            error="e2b-code-interpreter library is not installed.",
+            execution_time=time.perf_counter() - started,
+            provider=provider,
+            exit_code=1
+        )
+    api_key = os.getenv("E2B_API_KEY")
+    if not api_key:
+        return _result(
+            success=False,
+            error="E2B_API_KEY environment variable is not set.",
+            execution_time=time.perf_counter() - started,
+            provider=provider,
+            exit_code=1
+        )
+    try:
+        # CodeInterpreter runs inside a secure microVM sandbox
+        with CodeInterpreter(api_key=api_key) as sandbox:
+            execution = sandbox.notebook.exec_cell(code, timeout=timeout_seconds)
+            
+            output_list = []
+            if execution.logs.stdout:
+                output_list.extend(execution.logs.stdout)
+            
+            error_list = []
+            if execution.logs.stderr:
+                error_list.extend(execution.logs.stderr)
+            if execution.error:
+                error_list.append(f"{execution.error.name}: {execution.error.value}\n{execution.error.traceback}")
+                
+            stdout_str = "\n".join(output_list)
+            stderr_str = "\n".join(error_list)
+            
+            return _result(
+                success=not execution.error,
+                output=stdout_str,
+                error=stderr_str,
+                execution_time=time.perf_counter() - started,
+                exit_code=0 if not execution.error else 1,
+                provider=provider
+            )
+    except Exception as e:
+        return _result(
+            success=False,
+            error=f"E2B execution error: {e}",
+            execution_time=time.perf_counter() - started,
+            provider=provider,
+            exit_code=1
+        )
+
+
 async def execute_code(code: str, language: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> ExecutionResult:
     if language not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language: {language}")
+
+    # Use E2B sandbox if key is present and library is installed
+    if os.getenv("E2B_API_KEY") and CodeInterpreter is not None:
+        return await asyncio.to_thread(_execute_with_e2b, code, language, timeout_seconds)
 
     # Route Python securely through our hardened local multiprocessing provider
     if language == "python":
