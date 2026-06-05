@@ -1,5 +1,13 @@
 import { create } from 'zustand';
 
+export interface ToastNotification {
+  id: string;
+  type: 'success' | 'error' | 'info' | 'warning';
+  title: string;
+  message: string;
+  duration?: number;
+}
+
 export interface LogEntry {
   id: string;
   type: 'ghost' | 'system' | 'player' | 'error' | 'success' | 'warning';
@@ -83,6 +91,9 @@ interface SimulationState {
   chronicleEntries: ChronicleEntry[];
   userRole: string | null;
   username: string | null;
+  toasts: ToastNotification[];
+  addToast: (toast: Omit<ToastNotification, 'id'>) => void;
+  removeToast: (id: string) => void;
   
   socket: WebSocket | null;
   apiBase: string;
@@ -127,6 +138,20 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   apiBase: 'http://localhost:8000',
   userRole: null,
   username: null,
+  toasts: [],
+  addToast: (toast) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    set((state) => ({ toasts: [...state.toasts, { ...toast, id }] }));
+    const duration = toast.duration ?? 5000;
+    if (duration > 0) {
+      setTimeout(() => {
+        get().removeToast(id);
+      }, duration);
+    }
+  },
+  removeToast: (id) => {
+    set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) }));
+  },
 
   setWorldId: (id) => set({ worldId: id }),
   setHeat: (heat) => set({ heat }),
@@ -179,8 +204,14 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     const socket = new WebSocket(wsUrl.toString());
     set({ socket, worldId, apiBase, isConnected: false });
 
-    socket.onopen = () => set({ isConnected: true });
-    socket.onclose = () => set({ isConnected: false });
+    socket.onopen = () => {
+      set({ isConnected: true });
+      get().addToast({ type: 'success', title: 'Gateway Connection Active', message: 'Swarm console successfully synchronized.' });
+    };
+    socket.onclose = () => {
+      set({ isConnected: false });
+      get().addToast({ type: 'error', title: 'Gateway Connection Lost', message: 'WebSocket connection severed. Retrying...' });
+    };
     
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -202,6 +233,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             timestamp
           }]
         }));
+        get().addToast({ type: 'info', title: 'Operator Sync', message: `Operator ${data.player.username} has joined the workspace.` });
       } else if (data.type === 'player_left') {
         set((state) => ({
           logs: [...state.logs, {
@@ -211,6 +243,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             timestamp
           }]
         }));
+        get().addToast({ type: 'info', title: 'Operator Sync', message: `Operator ${data.player.username} has left the workspace.` });
       } else if (data.type === 'heat_update') {
         set({ heat: data.value });
       } else if (data.type === 'reality_patch') {
@@ -227,6 +260,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             }))
           ]
         }));
+        get().addToast({ 
+          type: 'info', 
+          title: 'Reality Patch Proponent', 
+          message: `Agent ${data.agent} proposed stability patch: "${data.patch.substring(0, 40)}..."` 
+        });
       } else if (data.type === 'admin_response') {
         set((state) => ({
           logs: [...state.logs, {
@@ -249,6 +287,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             timestamp
           }]
         }));
+        get().addToast({ 
+          type: 'warning', 
+          title: 'Vulnerability Intrusion', 
+          message: `Alert: Exploit triggered in sub-module: ${data.file}!` 
+        });
       } else if (data.type === 'attack_result') {
         set((state) => ({
           activeAttack: null,
@@ -262,6 +305,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
           stability: data.new_stability !== undefined ? data.new_stability : state.stability,
           world: data.world || state.world
         }));
+        get().addToast({ 
+          type: data.status === 'failed' ? 'error' : 'success', 
+          title: data.status === 'failed' ? 'Patch Validation Failed' : 'Patch Consolidated', 
+          message: data.message 
+        });
       } else if (data.type === 'world_update' || data.type === 'agent_spawned') {
         set((state) => ({
           world: data.world || state.world,
@@ -272,6 +320,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
             timestamp
           }] : state.logs
         }));
+        if (data.message) {
+          get().addToast({ type: 'info', title: 'Simulation Update', message: data.message });
+        }
       } else if (data.type === 'narrative_update' && data.entry) {
         const newEntry: ChronicleEntry = data.entry;
         if (newEntry.world_id === worldId) {
@@ -294,6 +345,12 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('lab_solved', { detail: data }));
         }
+        get().addToast({ 
+          type: 'success', 
+          title: 'Crucible Challenge Decrypted', 
+          message: `Success! ${data.message}`,
+          duration: 10000 
+        });
       }
     };
 
