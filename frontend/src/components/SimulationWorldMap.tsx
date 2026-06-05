@@ -1,16 +1,88 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { Activity, GitBranch, RadioTower, Sparkles, Crosshair, Lock } from 'lucide-react';
-import { SimulationWorld } from '@/hooks/useSimulationSocket';
+import { SimulationWorld } from '@/store/simulationStore';
 
 const factionColors: Record<string, string> = {
   kernel: '#38bdf8',
-  ghost: '#ef4444',
+  ghost: '#c084fc',
   operators: '#22c55e',
+  parasite: '#f43f5e',
+  awakening: '#fb7185',
 };
+
+interface AgentNodesProps {
+  world: SimulationWorld;
+}
+
+function AgentNodes({ world }: AgentNodesProps) {
+  const agents = useMemo(() => world.agents || [], [world.agents]);
+  const timeRef = useRef<number>(0);
+  const [rotation, setRotation] = useState<number>(0);
+
+  useEffect(() => {
+    let frameId: number;
+    const animate = () => {
+      timeRef.current += 0.008;
+      setRotation(timeRef.current);
+      frameId = requestAnimationFrame(animate);
+    };
+    frameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frameId);
+  }, []);
+
+  return (
+    <group>
+      {agents.map((agent, index) => {
+        // Render agents floating in slow orbits around the center
+        const radius = 2.2 + index * 0.5;
+        const speed = 0.4 + index * 0.08;
+        const angle = rotation * speed + (index * Math.PI * 2) / Math.max(1, agents.length);
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const y = Math.sin(rotation * 1.5 + index) * 0.25;
+
+        return (
+          <group key={agent.id} position={[x, y, z]}>
+            {/* Holographic pyramid/crystal node */}
+            <mesh>
+              <coneGeometry args={[0.09, 0.22, 4]} />
+              <meshStandardMaterial 
+                color="#c084fc" 
+                emissive="#c084fc" 
+                emissiveIntensity={1.8} 
+                transparent 
+                opacity={0.85} 
+              />
+            </mesh>
+            <mesh position={[0, -0.05, 0]} rotation={[Math.PI, 0, 0]}>
+              <coneGeometry args={[0.09, 0.1, 4]} />
+              <meshStandardMaterial 
+                color="#c084fc" 
+                emissive="#c084fc" 
+                emissiveIntensity={1.8} 
+                transparent 
+                opacity={0.85} 
+              />
+            </mesh>
+            <Text 
+              position={[0, 0.22, 0]} 
+              fontSize={0.11} 
+              color="#d8b4fe" 
+              anchorX="center"
+              font="monospace"
+            >
+              {agent.name.replace('The ', '')}
+            </Text>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
 
 interface HotspotsProps {
   world: SimulationWorld;
@@ -128,19 +200,20 @@ export function SimulationWorldMap({
           </div>
         )}
 
-        <Canvas camera={{ position: [0, 0, 7], fov: 58 }}>
-          <color attach="background" args={['#020617']} />
-          <ambientLight intensity={0.45} />
-          <pointLight position={[4, 5, 5]} intensity={1.4} />
-          <gridHelper args={[8, 16, '#1e293b', '#0f172a']} rotation={[Math.PI / 2, 0, 0]} />
+        <Canvas camera={{ position: [0, 0, 7], fov: 58 }} style={{ background: 'transparent' }}>
+          <ambientLight intensity={0.5} />
+          <pointLight position={[4, 5, 5]} intensity={1.5} />
+          <gridHelper args={[12, 24, '#a855f7', '#1e1b4b']} rotation={[Math.PI / 2, 0, 0]} />
           
           <Hotspots 
             world={world} 
             selectedAnomalyId={selectedAnomalyId} 
             onAnomalyClick={(id) => setSelectedAnomalyId(id)} 
           />
+
+          <AgentNodes world={world} />
           
-          <OrbitControls enablePan={false} minDistance={4} maxDistance={10} />
+          <OrbitControls enablePan={false} minDistance={4} maxDistance={10} autoRotate autoRotateSpeed={0.3} />
         </Canvas>
       </div>
 
