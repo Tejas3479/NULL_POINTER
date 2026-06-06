@@ -216,7 +216,7 @@ export default function AgentsPage() {
       </section>
 
       {/* DETAIL VIEW / GRAPH - Right Pane */}
-      <section className="col-span-12 lg:col-span-6 xl:col-span-7 flex flex-col gap-4 h-full min-h-[400px] md:min-h-0 overflow-y-auto md:overflow-hidden select-none pr-1">
+      <section className="col-span-12 lg:col-span-6 xl:col-span-7 flex flex-col gap-4 h-full min-h-[400px] md:min-h-0 overflow-y-auto select-none pr-1">
         {selectedAgent ? (
           <div className="flex flex-col h-full min-h-0 gap-4">
             {/* Agent Info Profile */}

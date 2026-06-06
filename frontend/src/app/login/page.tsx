@@ -67,7 +67,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-hidden">
+    <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-y-auto">
       {/* CRT Scanline & Noise Overlay */}
       <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_4px,4px_100%] opacity-40 mix-blend-overlay" />
       

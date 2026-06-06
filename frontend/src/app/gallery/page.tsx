@@ -183,7 +183,7 @@ export default function GalleryPage() {
   }, [worlds, search, sortBy]);
 
   return (
-    <main className="min-h-screen bg-black text-slate-100 font-mono relative overflow-hidden flex flex-col">
+    <main className="h-screen bg-black text-slate-100 font-mono relative overflow-hidden flex flex-col">
       {/* Cyber scanlines overlay */}
       <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-20 mix-blend-overlay" />
 

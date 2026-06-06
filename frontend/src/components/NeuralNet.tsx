@@ -11,7 +11,7 @@ const seededUnit = (seed: number) => {
   return value - Math.floor(value);
 };
 
-const NeuralNodes = ({ count = 200, isAttacked = false }) => {
+const NeuralNodes = ({ count = 200, isAttacked = false, variant = 'sidebar' }: { count?: number; isAttacked?: boolean; variant?: 'sidebar' | 'background' }) => {
   const points = useMemo(() => {
     const p = new Float32Array(count * 3);
     for (let i = 0; i < count; i++) {
@@ -43,17 +43,21 @@ const NeuralNodes = ({ count = 200, isAttacked = false }) => {
     
     if (isAttacked) {
        ref.current.scale.setScalar(1 + Math.sin(time * 10) * 0.1);
-    } else {
+     } else {
        ref.current.scale.setScalar(1);
-    }
+     }
   });
+
+  // Theme-compliant colors (Cyan/Purple theme)
+  const nodeColor = isAttacked ? "#ef4444" : variant === 'background' ? "#06b6d4" : "#00FF41";
+  const lineColor = isAttacked ? "#ef4444" : variant === 'background' ? "#a855f7" : "#00FF41";
 
   return (
     <group>
       <Points ref={ref} positions={points} stride={3} frustumCulled={false}>
         <PointMaterial
           transparent
-          color="#00FF41"
+          color={nodeColor}
           size={0.05}
           sizeAttenuation={true}
           depthWrite={false}
@@ -61,12 +65,12 @@ const NeuralNodes = ({ count = 200, isAttacked = false }) => {
         />
       </Points>
       
-      {/* Interconnecting lines (simplified for performance) */}
+      {/* Interconnecting lines */}
       {lines.map((line) => (
         <Line
           key={line.id}
           points={line.points}
-          color="#00FF41"
+          color={lineColor}
           lineWidth={0.5}
           transparent
           opacity={0.2}
@@ -76,9 +80,36 @@ const NeuralNodes = ({ count = 200, isAttacked = false }) => {
   );
 };
 
-export const NeuralNet = ({ isAttacked = false }: { isAttacked?: boolean }) => {
+export const NeuralNet = ({ 
+  isAttacked = false, 
+  variant = 'sidebar', 
+  className = '' 
+}: { 
+  isAttacked?: boolean; 
+  variant?: 'sidebar' | 'background'; 
+  className?: string;
+}) => {
+  if (variant === 'background') {
+    return (
+      <div className={`absolute inset-0 pointer-events-none select-none z-0 ${className}`}>
+        <Canvas camera={{ position: [0, 0, 5], fov: 60 }}>
+          <ambientLight intensity={0.5} />
+          <pointLight position={[10, 10, 10]} />
+          
+          <Float speed={1} rotationIntensity={0.3} floatIntensity={0.3}>
+            <NeuralNodes isAttacked={isAttacked} variant={variant} />
+          </Float>
+
+          <EffectComposer>
+            <Bloom luminanceThreshold={0.1} luminanceSmoothing={0.9} height={300} intensity={0.8} />
+          </EffectComposer>
+        </Canvas>
+      </div>
+    );
+  }
+
   return (
-    <div className="w-full h-full min-h-[200px] bg-black/40 rounded-lg border border-[#00FF41]/20 overflow-hidden relative">
+    <div className={`w-full h-full min-h-[200px] bg-black/40 rounded-lg border border-[#00FF41]/20 overflow-hidden relative ${className}`}>
       <div className="absolute top-2 left-3 z-10">
         <span className="text-[10px] font-black text-[#00FF41]/60 uppercase tracking-[0.3em]">Neural_Web::Active</span>
       </div>
@@ -89,7 +120,7 @@ export const NeuralNet = ({ isAttacked = false }: { isAttacked?: boolean }) => {
         <pointLight position={[10, 10, 10]} />
         
         <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-          <NeuralNodes isAttacked={isAttacked} />
+          <NeuralNodes isAttacked={isAttacked} variant={variant} />
         </Float>
 
         <EffectComposer>

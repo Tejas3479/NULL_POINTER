@@ -254,6 +254,9 @@ export const DebuggerCore = ({
         <div className="flex-1 flex min-h-0 relative">
           {viewMode === 'terminal' ? (
             <>
+              {/* Subtle background neural net animation */}
+              <NeuralNet variant="background" className="opacity-[0.06]" isAttacked={!!activeAttack} />
+              
               <div 
                 ref={scrollRef}
                 className="flex-1 p-6 overflow-y-auto custom-scrollbar space-y-2 font-mono text-sm relative z-10"
@@ -281,18 +284,6 @@ export const DebuggerCore = ({
                     </motion.div>
                   ))}
                 </AnimatePresence>
-              </div>
-
-              {/* Neural Feed Sidebar (Internal) */}
-              <div className="hidden xl:block w-64 border-l border-purple-500/20 p-2 bg-slate-950/20 backdrop-blur-sm overflow-hidden animate-fade-in">
-                 <NeuralNet isAttacked={!!activeAttack} />
-                 <div className="mt-4 p-2 border border-purple-500/10 text-[9px] text-slate-500 uppercase leading-tight font-bold">
-                    Neural_Web Visualization: Active
-                    <br/>
-                    Vector_Space_Recalculation...
-                    <br/>
-                    Status: <span className={activeAttack ? 'text-red-400' : 'text-cyan-400'}>{activeAttack ? 'BREACHED' : 'INFILTRATED'}</span>
-                 </div>
               </div>
             </>
           ) : (

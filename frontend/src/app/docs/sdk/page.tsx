@@ -190,7 +190,7 @@ export default function SdkDocsPage() {
 });`;
 
   return (
-    <main className="min-h-screen bg-black text-slate-100 font-mono relative overflow-hidden flex flex-col">
+    <main className="h-screen bg-black text-slate-100 font-mono relative overflow-hidden flex flex-col">
       <Script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js" strategy="lazyOnload" />
       <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-20 mix-blend-overlay" />
       <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#1e293b_1px,transparent_1px)] bg-[size:16px_16px]" />
