@@ -195,16 +195,22 @@ async def generic_exception_handler(request, exc):
     )
 
 # Enable CORS for frontend interaction
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+origins = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # In production, restrict this
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 cookie_kwargs = {
     "key": SESSION_COOKIE_NAME,
