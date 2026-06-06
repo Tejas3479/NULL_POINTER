@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import { Activity, GitBranch, RadioTower, Sparkles, Crosshair, Lock } from 'lucide-react';
 import { SimulationWorld } from '@/store/simulationStore';
+import * as THREE from 'three';
+import { useSpatialAudio } from '@/hooks/useSpatialAudio';
+import { EffectComposer, Bloom } from '@react-three/postprocessing';
 
 const factionColors: Record<string, string> = {
   kernel: '#38bdf8',
@@ -14,11 +17,295 @@ const factionColors: Record<string, string> = {
   awakening: '#fb7185',
 };
 
-interface AgentNodesProps {
-  world: SimulationWorld;
+// --- Spatial Audio Components ---
+
+interface CustomWindow extends Window {
+  __GLOBAL_AUDIO_CTX__?: AudioContext;
+  webkitAudioContext?: typeof AudioContext;
 }
 
-function AgentNodes({ world }: AgentNodesProps) {
+interface AudioListenerRigProps {
+  active: boolean;
+}
+
+function AudioListenerRig({ active }: AudioListenerRigProps) {
+  const { camera } = useThree();
+
+  useFrame(() => {
+    if (!active) return;
+    if (typeof window === 'undefined') return;
+    const audioCtx = (window as unknown as CustomWindow).__GLOBAL_AUDIO_CTX__;
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    
+    const listener = audioCtx.listener;
+    const time = audioCtx.currentTime;
+
+    try {
+      if (listener.positionX) {
+        listener.positionX.setValueAtTime(camera.position.x, time);
+        listener.positionY.setValueAtTime(camera.position.y, time);
+        listener.positionZ.setValueAtTime(camera.position.z, time);
+
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
+
+        listener.forwardX.setValueAtTime(forward.x, time);
+        listener.forwardY.setValueAtTime(forward.y, time);
+        listener.forwardZ.setValueAtTime(forward.z, time);
+
+        listener.upX.setValueAtTime(up.x, time);
+        listener.upY.setValueAtTime(up.y, time);
+        listener.upZ.setValueAtTime(up.z, time);
+      } else {
+        listener.setPosition(camera.position.x, camera.position.y, camera.position.z);
+      }
+    } catch (e) {
+      console.warn("Failed to update spatial audio listener position", e);
+    }
+  });
+
+  return null;
+}
+
+interface PositionalSynthProps {
+  position: [number, number, number];
+  frequency?: number;
+  active?: boolean;
+}
+
+function PositionalSynth({ position, frequency = 220, active = true }: PositionalSynthProps) {
+  const pannerRef = useRef<PannerNode | null>(null);
+  const oscRef = useRef<OscillatorNode | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
+
+  useEffect(() => {
+    if (!active) return;
+    if (typeof window === 'undefined') return;
+    const audioCtx = (window as unknown as CustomWindow).__GLOBAL_AUDIO_CTX__;
+    if (!audioCtx || audioCtx.state !== 'running') return;
+
+    try {
+      const panner = audioCtx.createPanner();
+      panner.panningModel = 'HRTF';
+      panner.distanceModel = 'exponential';
+      panner.refDistance = 1.0;
+      panner.maxDistance = 100.0;
+      panner.rolloffFactor = 1.0;
+
+      const time = audioCtx.currentTime;
+      panner.positionX.setValueAtTime(position[0], time);
+      panner.positionY.setValueAtTime(position[1], time);
+      panner.positionZ.setValueAtTime(position[2], time);
+
+      const gainNode = audioCtx.createGain();
+      gainNode.gain.setValueAtTime(0.015, time); // Subtle background hum volume
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(320, time);
+
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(frequency, time);
+
+      osc.connect(filter);
+      filter.connect(gainNode);
+      gainNode.connect(panner);
+      panner.connect(audioCtx.destination);
+      osc.start();
+
+      oscRef.current = osc;
+      gainRef.current = gainNode;
+      pannerRef.current = panner;
+
+      return () => {
+        try { osc.stop(); } catch {}
+        try { osc.disconnect(); } catch {}
+        try { filter.disconnect(); } catch {}
+        try { gainNode.disconnect(); } catch {}
+        try { panner.disconnect(); } catch {}
+      };
+    } catch (e) {
+      console.warn("Positional Audio node creation failed", e);
+    }
+  }, [active, position, frequency]);
+
+  useFrame(() => {
+    if (!active) return;
+    if (typeof window === 'undefined') return;
+    const audioCtx = (window as unknown as CustomWindow).__GLOBAL_AUDIO_CTX__;
+    if (audioCtx && audioCtx.state === 'running' && pannerRef.current) {
+      const time = audioCtx.currentTime;
+      pannerRef.current.positionX.setValueAtTime(position[0], time);
+      pannerRef.current.positionY.setValueAtTime(position[1], time);
+      pannerRef.current.positionZ.setValueAtTime(position[2], time);
+    }
+  });
+
+  return null;
+}
+
+// --- WebGL Shader & Particles Components ---
+
+interface CentralCoreProps {
+  stability: number;
+  heat: number;
+}
+
+function CentralCore({ stability, heat }: CentralCoreProps) {
+  const meshRef = useRef<THREE.Mesh>(null);
+
+  const vertexShader = `
+    uniform float uTime;
+    uniform float uStability;
+    uniform float uHeat;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+
+    float hash(vec3 p) {
+      p = fract(p * 0.3183099 + vec3(0.1, 0.1, 0.1));
+      p *= 17.0;
+      return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+
+    float noise(vec3 x) {
+      vec3 i = floor(x);
+      vec3 f = fract(x);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                     mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                     mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+
+    void main() {
+      vNormal = normal;
+      vPosition = position;
+
+      float frequency = 2.5 + uHeat * 4.0;
+      float amplitude = 0.08 * (1.0 - uStability) + 0.02 * uHeat;
+      float distortion = noise(position * frequency + uTime * 1.5) * amplitude;
+      vec3 newPosition = position + normal * distortion;
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(newPosition, 1.0);
+    }
+  `;
+
+  const fragmentShader = `
+    uniform float uTime;
+    uniform float uStability;
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+
+    void main() {
+      float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.0);
+      vec3 stableColor = vec3(0.08, 0.58, 0.88); // Cyber Cyan-Blue
+      vec3 unstableColor = vec3(0.92, 0.16, 0.38); // Warning Pink-Red
+      vec3 baseColor = mix(unstableColor, stableColor, uStability);
+
+      float ring = sin(vPosition.y * 24.0 - uTime * 3.0) * 0.5 + 0.5;
+      vec3 finalColor = baseColor * (intensity * 1.8 + ring * 0.25);
+
+      gl_FragColor = vec4(finalColor, 0.55);
+    }
+  `;
+
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0.0 },
+    uStability: { value: 1.0 },
+    uHeat: { value: 0.0 }
+  }), []);
+
+  useFrame((state) => {
+    if (meshRef.current) {
+      const material = meshRef.current.material as THREE.ShaderMaterial;
+      const time = state.clock.getElapsedTime();
+      material.uniforms.uTime.value = time;
+      material.uniforms.uStability.value = stability;
+      material.uniforms.uHeat.value = heat;
+    }
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[1.15, 64, 64]} />
+      <shaderMaterial
+        vertexShader={vertexShader}
+        fragmentShader={fragmentShader}
+        uniforms={uniforms}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
+interface ProceduralGalaxyProps {
+  active: boolean;
+}
+
+// Pre-calculate galaxy particle positions outside of render flow to satisfy React purity rules
+const galaxyPositions = (() => {
+  const count = 1800;
+  const pos = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    const r = Math.random() * 4.8 + 1.3;
+    const branches = 3;
+    const branchAngle = ((i % branches) * 2 * Math.PI) / branches;
+    const twist = r * 0.75;
+    const spread = (Math.random() - 0.5) * 0.45;
+    const angle = branchAngle + twist + spread;
+
+    pos[i * 3] = Math.cos(angle) * r;
+    pos[i * 3 + 1] = (Math.random() - 0.5) * 0.22 * (5.5 - r);
+    pos[i * 3 + 2] = Math.sin(angle) * r;
+  }
+
+  return pos;
+})();
+
+function ProceduralGalaxy({ active }: ProceduralGalaxyProps) {
+  const pointsRef = useRef<THREE.Points>(null);
+
+  useFrame((state) => {
+    if (pointsRef.current && active) {
+      pointsRef.current.rotation.y = state.clock.getElapsedTime() * 0.035;
+    }
+  });
+
+  if (!active) return null;
+
+  return (
+    <points ref={pointsRef}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          args={[galaxyPositions, 3]}
+        />
+      </bufferGeometry>
+      <pointsMaterial
+        color="#a855f7" // Purple cosmic particles
+        size={0.03}
+        transparent
+        opacity={0.55}
+        sizeAttenuation
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </points>
+  );
+}
+
+// --- Agent Nodes & Anomaly Hotspots ---
+
+interface AgentNodesProps {
+  world: SimulationWorld;
+  isAudioActive: boolean;
+}
+
+function AgentNodes({ world, isAudioActive }: AgentNodesProps) {
   const agents = useMemo(() => world.agents || [], [world.agents]);
   const timeRef = useRef<number>(0);
   const [rotation, setRotation] = useState<number>(0);
@@ -37,7 +324,6 @@ function AgentNodes({ world }: AgentNodesProps) {
   return (
     <group>
       {agents.map((agent, index) => {
-        // Render agents floating in slow orbits around the center
         const radius = 2.2 + index * 0.5;
         const speed = 0.4 + index * 0.08;
         const angle = rotation * speed + (index * Math.PI * 2) / Math.max(1, agents.length);
@@ -45,8 +331,18 @@ function AgentNodes({ world }: AgentNodesProps) {
         const z = Math.sin(angle) * radius;
         const y = Math.sin(rotation * 1.5 + index) * 0.25;
 
+        // Pitch maps to index position
+        const agentFreq = 180 + (index * 30);
+
         return (
           <group key={agent.id} position={[x, y, z]}>
+            {/* Positional Synthesizer Hum */}
+            <PositionalSynth 
+              position={[x, y, z]} 
+              frequency={agentFreq} 
+              active={isAudioActive} 
+            />
+
             {/* Holographic pyramid/crystal node */}
             <mesh>
               <coneGeometry args={[0.09, 0.22, 4]} />
@@ -88,9 +384,10 @@ interface HotspotsProps {
   world: SimulationWorld;
   selectedAnomalyId: string | null;
   onAnomalyClick: (id: string) => void;
+  isAudioActive: boolean;
 }
 
-function Hotspots({ world, selectedAnomalyId, onAnomalyClick }: HotspotsProps) {
+function Hotspots({ world, selectedAnomalyId, onAnomalyClick, isAudioActive }: HotspotsProps) {
   const anomalies = useMemo(() => world.anomalies, [world.anomalies]);
 
   return (
@@ -101,8 +398,18 @@ function Hotspots({ world, selectedAnomalyId, onAnomalyClick }: HotspotsProps) {
         const baseScale = 0.15 + anomaly.severity / 180;
         const scale = isSelected ? baseScale * 1.35 : baseScale;
 
+        // Warning sound frequency maps to severity
+        const anomalyFreq = 220 + (anomaly.severity * 2.5);
+
         return (
           <group key={anomaly.id} position={[anomaly.x, anomaly.y, anomaly.z]}>
+            {/* Positional Anomaly Hum */}
+            <PositionalSynth 
+              position={[anomaly.x, anomaly.y, anomaly.z]} 
+              frequency={anomalyFreq} 
+              active={isAudioActive} 
+            />
+
             {/* Clickable Sphere */}
             <mesh 
               scale={scale}
@@ -152,6 +459,8 @@ function Hotspots({ world, selectedAnomalyId, onAnomalyClick }: HotspotsProps) {
   );
 }
 
+// --- Main World Map Dashboard Component ---
+
 export function SimulationWorldMap({
   world,
   userRole,
@@ -164,6 +473,25 @@ export function SimulationWorldMap({
   onSpawnAgent: (archetypeId: string) => void;
 }) {
   const [selectedAnomalyId, setSelectedAnomalyId] = useState<string | null>(null);
+  
+  // Audio & Graphics Toggles
+  const { initAudio, playBeep } = useSpatialAudio();
+  const [isAudioActive, setIsAudioActive] = useState(false);
+  const [ecoMode, setEcoMode] = useState(false);
+
+  const handleToggleAudio = async () => {
+    const ctx = await initAudio();
+    if (ctx) {
+      setIsAudioActive(ctx.state === 'running');
+    }
+  };
+
+  useEffect(() => {
+    if (world?.tick && isAudioActive) {
+      // Play a soft network activity tick hum
+      playBeep(240, 0.05);
+    }
+  }, [world?.tick, isAudioActive, playBeep]);
 
   if (!world) {
     return (
@@ -174,17 +502,41 @@ export function SimulationWorldMap({
   }
 
   const latestLore = world.lore[world.lore.length - 1];
-  
-  // Find selected anomaly details
   const selectedAnomaly = world.anomalies.find(a => a.id === selectedAnomalyId);
 
   return (
     <section className="h-full min-h-0 grid grid-rows-[minmax(220px,1fr)_auto] gap-4">
       {/* 3D Map Visualizer */}
-      <div className="border border-slate-800 bg-black overflow-hidden relative rounded-lg">
-        <div className="absolute left-4 top-4 z-10 flex items-center gap-2 text-[10px] uppercase tracking-[0.24em] text-slate-400 font-bold">
-          <RadioTower size={14} className="text-cyan-400" />
-          World Tick {world.tick}
+      <div className="border border-slate-900 bg-black overflow-hidden relative rounded-lg">
+        {/* HUD control bar */}
+        <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-3 text-[9px] uppercase tracking-wider font-mono font-bold select-none">
+          <div className="flex items-center gap-2 text-slate-400 bg-slate-950/80 border border-slate-900 px-2.5 py-1 rounded">
+            <RadioTower size={12} className="text-cyan-400" />
+            <span>Tick {world.tick}</span>
+          </div>
+
+          <button 
+            onClick={handleToggleAudio}
+            className={`px-2.5 py-1 rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
+              isAudioActive 
+                ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20' 
+                : 'border-slate-800 text-slate-500 bg-slate-950/80 hover:text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${isAudioActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
+            <span>{isAudioActive ? 'Audio Active' : 'Enable 3D Sound'}</span>
+          </button>
+
+          <button 
+            onClick={() => setEcoMode(!ecoMode)}
+            className={`px-2.5 py-1 rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
+              ecoMode 
+                ? 'border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20' 
+                : 'border-slate-800 text-slate-500 bg-slate-950/80 hover:text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <span>GPU Eco Mode: {ecoMode ? 'ON' : 'OFF'}</span>
+          </button>
         </div>
 
         {selectedAnomaly && (
@@ -201,19 +553,48 @@ export function SimulationWorldMap({
         )}
 
         <Canvas camera={{ position: [0, 0, 7], fov: 58 }} style={{ background: 'transparent' }}>
-          <ambientLight intensity={0.5} />
-          <pointLight position={[4, 5, 5]} intensity={1.5} />
-          <gridHelper args={[12, 24, '#a855f7', '#1e1b4b']} rotation={[Math.PI / 2, 0, 0]} />
+          <ambientLight intensity={0.55} />
+          <pointLight position={[4, 5, 5]} intensity={1.6} />
+          
+          <gridHelper args={[12, 24, '#a855f7', '#1c1917']} rotation={[Math.PI / 2, 0, 0]} />
+          
+          {/* Spatial Audio camera listener */}
+          <AudioListenerRig active={isAudioActive} />
+
+          {/* Core Reacting Mesh */}
+          <CentralCore 
+            stability={world.stability} 
+            heat={world.heat} 
+          />
+
+          {/* Procedural Galaxy Particles */}
+          <ProceduralGalaxy active={!ecoMode} />
           
           <Hotspots 
             world={world} 
             selectedAnomalyId={selectedAnomalyId} 
-            onAnomalyClick={(id) => setSelectedAnomalyId(id)} 
+            onAnomalyClick={(id) => {
+              setSelectedAnomalyId(id);
+              playBeep(750, 0.15);
+            }} 
+            isAudioActive={isAudioActive}
           />
 
-          <AgentNodes world={world} />
+          <AgentNodes world={world} isAudioActive={isAudioActive} />
           
-          <OrbitControls enablePan={false} minDistance={4} maxDistance={10} autoRotate autoRotateSpeed={0.3} />
+          <OrbitControls enablePan={false} minDistance={4} maxDistance={10} autoRotate={!ecoMode} autoRotateSpeed={0.3} />
+
+          {/* Post-Processing selective Glow (Bloom) */}
+          {!ecoMode && (
+            <EffectComposer>
+              <Bloom 
+                luminanceThreshold={0.12} 
+                luminanceSmoothing={0.9} 
+                height={300} 
+                intensity={1.1} 
+              />
+            </EffectComposer>
+          )}
         </Canvas>
       </div>
 

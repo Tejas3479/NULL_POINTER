@@ -72,3 +72,30 @@ body {
   0% { bottom: 100%; }
   100% { bottom: 0%; }
 }
+
+/* Cyberpunk Glitch & Alarm Animations */
+@keyframes glitch-shake {
+  0% { transform: translate(0, 0) skew(0deg); }
+  20% { transform: translate(-2px, 2px) skew(-1deg); }
+  40% { transform: translate(-2px, -2px) skew(1deg); }
+  60% { transform: translate(2px, 2px) skew(-1deg); }
+  80% { transform: translate(2px, -2px) skew(0deg); }
+  100% { transform: translate(0, 0) skew(0deg); }
+}
+
+@keyframes alarm-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.05), inset 0 0 15px rgba(244, 63, 94, 0.05); border-color: rgba(244, 63, 94, 0.3); }
+  50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.25), inset 0 0 25px rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.75); }
+}
+
+.glitch-alarm {
+  animation: glitch-shake 0.3s steps(2) infinite, alarm-pulse 2s ease-in-out infinite;
+}
+
+/* 1px Tactical Grid Overlay */
+.grid-bg-overlay {
+  background-size: 24px 24px;
+  background-image: 
+    linear-gradient(to right, rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+}

@@ -23,7 +23,7 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${orbitron.variable} font-sans bg-[#050505] text-slate-200 antialiased min-h-screen`}
       >
-        <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(17,24,39,1)_0%,rgba(5,5,5,1)_100%)] pointer-events-none -z-10" />
+        <div className="fixed inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(17,24,39,1)_0%,rgba(5,5,5,1)_100%)] grid-bg-overlay pointer-events-none -z-10" />
         <div className="fixed inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none -z-10 brightness-50" />
         <ToastContainer />
         <GuideModal />
