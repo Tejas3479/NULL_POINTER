@@ -212,7 +212,7 @@ export default function GalleryPage() {
           </Link>
           <Link 
             href="/sim/local-null-pointer"
-            className="px-3 py-1.5 bg-[#00FF41] hover:bg-[#00FF41]/85 border border-[#00FF41]/30 text-black rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer font-orbitron"
+            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 border border-purple-500/30 text-white rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer font-orbitron shadow-[0_0_15px_rgba(168,85,247,0.3)]"
           >
             Active Swarm Console
           </Link>

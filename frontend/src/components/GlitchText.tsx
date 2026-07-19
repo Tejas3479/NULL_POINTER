@@ -50,7 +50,7 @@ export const GlitchText = ({ text, className = "", intensity = 'medium' }: Glitc
 
       {/* Slice Effect Overlay */}
       <motion.div
-        className="absolute inset-0 bg-[#00FF41]/10 z-20 pointer-events-none"
+        className="absolute inset-0 bg-cyan-500/10 z-20 pointer-events-none"
         animate={{
           clipPath: [
             "inset(0% 0 100% 0)",

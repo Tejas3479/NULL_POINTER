@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useSimulationStore } from '@/store/simulationStore';
 import { getBackendUrl } from '@/config';
 import { 
@@ -11,7 +12,10 @@ import {
   Copy, 
   Check, 
   GitBranch, 
-  AlertTriangle 
+  AlertTriangle,
+  RefreshCw,
+  Trash2,
+  GitFork
 } from 'lucide-react';
 
 const getCsrfToken = (): string => {
@@ -21,6 +25,7 @@ const getCsrfToken = (): string => {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
   const { 
     world, 
     userRole, 
@@ -37,6 +42,90 @@ export default function SettingsPage() {
   const [saveParameterSuccess, setSaveParameterSuccess] = useState<string | null>(null);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [savingWebhook, setSavingWebhook] = useState(false);
+
+  // Snapshots State
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
+  const fetchSnapshots = async () => {
+    try {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/snapshots`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setSnapshots(data);
+      }
+    } catch (err) {
+      console.error("Failed to load snapshots", err);
+    }
+  };
+
+  const handleCreateSnapshot = async () => {
+    setLoadingSnapshots(true);
+    try {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/snapshot`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        }
+      });
+      if (res.ok) {
+        await fetchSnapshots();
+      }
+    } catch (err) {
+      console.error("Failed to create snapshot", err);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
+  const handleRestoreSnapshot = async (id: string) => {
+    setLoadingSnapshots(true);
+    try {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/snapshot/${id}/restore`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        }
+      });
+      if (res.ok) {
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Failed to restore snapshot", err);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
+  const handleForkSnapshot = async (id: string) => {
+    setLoadingSnapshots(true);
+    try {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/snapshot/${id}/fork`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        router.push(`/sim/${data.world_id}`);
+      }
+    } catch (err) {
+      console.error("Failed to fork snapshot", err);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSnapshots();
+  }, [world?.world_id]);
 
   // Initialize seed counts from world archetypes if available
   useEffect(() => {
@@ -241,7 +330,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {/* Snapshot Management (Phase 3-B) */}
+            {/* Snapshot Management */}
             <div className="glass p-5 rounded border border-slate-800 bg-slate-950/40 flex flex-col gap-4">
               <div className="flex items-center gap-2 border-b border-slate-900 pb-3">
                 <Database className="text-yellow-500" size={16} />
@@ -253,24 +342,52 @@ export default function SettingsPage() {
                   Create checkpoint backups of the current timeline simulation space.
                 </p>
 
-                <div className="border border-slate-900 bg-black/30 p-3 rounded flex justify-between items-center">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[9px] text-white font-bold uppercase">CHECKPOINT_01_AUTO</span>
-                    <span className="text-[8px] text-slate-500">Tick 124 • 04/06/2026</span>
-                  </div>
-                  <button 
-                    disabled 
-                    className="px-2 py-1 border border-slate-800 bg-slate-950 text-slate-600 text-[8px] font-black uppercase rounded cursor-not-allowed"
-                  >
-                    Restore
-                  </button>
+                <div className="max-h-60 overflow-y-auto custom-scrollbar flex flex-col gap-2 pr-1">
+                  {snapshots.length === 0 ? (
+                    <div className="text-[9px] text-slate-600 italic py-4 text-center border border-slate-900/60 bg-black/25 rounded">
+                      No snapshots created yet.
+                    </div>
+                  ) : (
+                    snapshots.map((snap) => (
+                      <div key={snap.id} className="border border-slate-900 bg-black/35 p-2.5 rounded flex justify-between items-center hover:border-slate-800 transition-all">
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="text-[8px] text-white font-mono truncate font-bold uppercase tracking-wider select-all" title={snap.id}>
+                            ID: {snap.id.slice(0, 8)}...
+                          </span>
+                          <span className="text-[8px] text-cyan-400 font-bold uppercase font-orbitron">
+                            Tick {snap.tick} • {new Date(snap.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="flex gap-1.5 shrink-0">
+                          <button 
+                            onClick={() => handleRestoreSnapshot(snap.id)}
+                            disabled={loadingSnapshots || userRole !== 'admin'}
+                            className="px-2 py-1 bg-cyan-950/40 border border-cyan-500/30 hover:bg-cyan-500/10 text-cyan-400 text-[8px] font-black uppercase rounded transition-all cursor-pointer disabled:opacity-40"
+                            title="Restore active simulation to this checkpoint"
+                          >
+                            Restore
+                          </button>
+                          <button 
+                            onClick={() => handleForkSnapshot(snap.id)}
+                            disabled={loadingSnapshots}
+                            className="px-2 py-1 bg-purple-950/40 border border-purple-500/30 hover:bg-purple-500/10 text-purple-400 text-[8px] font-black uppercase rounded transition-all cursor-pointer disabled:opacity-40 flex items-center gap-1"
+                            title="Fork a new world from this checkpoint"
+                          >
+                            <GitFork size={8} />
+                            Fork
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <button 
-                  disabled
-                  className="w-full py-2 border border-slate-800 text-slate-600 text-[9px] font-black uppercase tracking-wider rounded cursor-not-allowed mt-2"
+                  onClick={handleCreateSnapshot}
+                  disabled={loadingSnapshots || userRole !== 'admin'}
+                  className="w-full py-2.5 bg-yellow-500/10 border border-yellow-500/30 hover:bg-yellow-500/20 text-yellow-500 text-[9px] font-black uppercase tracking-wider rounded transition-all cursor-pointer mt-2 disabled:opacity-40"
                 >
-                  Create Backup Snapshot
+                  {loadingSnapshots ? "Processing..." : "Create Backup Snapshot"}
                 </button>
               </div>
             </div>
