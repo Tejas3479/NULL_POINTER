@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { getBackendUrl } from '@/config';
 import { 
   ShieldAlert, 
   HelpCircle, 
@@ -44,7 +45,7 @@ export const CrucibleLabsPanel = () => {
 
   const fetchLabs = async () => {
     try {
-      const res = await fetch("http://localhost:8000/v1/labs", { credentials: "include" });
+      const res = await fetch(`${getBackendUrl()}/v1/labs`, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setLabs(data);
@@ -84,7 +85,7 @@ export const CrucibleLabsPanel = () => {
     setLab2Loading(true);
     setLab2Result(null);
     try {
-      const res = await fetch("http://localhost:8000/v1/labs/lab-2/attempt", {
+      const res = await fetch(`${getBackendUrl()}/v1/labs/lab-2/attempt`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -106,7 +107,7 @@ export const CrucibleLabsPanel = () => {
     setLab3Loading(true);
     setLab3Result(null);
     try {
-      const res = await fetch("http://localhost:8000/v1/labs/lab-3/attempt", {
+      const res = await fetch(`${getBackendUrl()}/v1/labs/lab-3/attempt`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

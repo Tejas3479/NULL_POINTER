@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getBackendUrl } from '@/config';
 import { ShieldAlert, Check, X, Code, AlertTriangle } from 'lucide-react';
 import { GlitchText } from './GlitchText';
 
@@ -45,7 +46,7 @@ export const HITLGateModal = ({
     setResolving(true);
     setError(null);
     try {
-      const res = await fetch(`http://localhost:8000/v1/simulation/approvals/${current.id}/resolve`, {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/approvals/${current.id}/resolve`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -93,8 +94,9 @@ export const HITLGateModal = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-        {/* CRT Scanline Scanline Effects */}
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+        {/* CRT Scanline & Vignette Effects */}
+        <div className="crt-vignette" />
         <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.3)_50%)] bg-[length:100%_4px] opacity-25 mix-blend-overlay" />
         
         <motion.div
@@ -102,18 +104,30 @@ export const HITLGateModal = ({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.2 }}
-          className="w-full max-w-[700px] bg-slate-950 border-2 border-purple-500/60 p-6 rounded relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.3)] flex flex-col gap-4"
+          className={`w-full max-w-[700px] bg-slate-950 border-2 p-6 rounded relative z-10 flex flex-col gap-4 transition-all duration-300 ${
+            governor_ok 
+              ? 'border-purple-500/60 shadow-[0_0_50px_rgba(168,85,247,0.25)]' 
+              : 'border-red-500/60 shadow-[0_0_50px_rgba(239,68,68,0.25)]'
+          }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-purple-500/20 pb-3">
+          <div className="flex items-center justify-between border-b border-slate-900 pb-3">
             <div className="flex items-center gap-3 text-purple-400">
-              <ShieldAlert className="animate-pulse" size={24} />
+              <ShieldAlert className={governor_ok ? 'text-purple-400 animate-pulse' : 'text-red-500 animate-bounce'} size={24} />
               <div>
-                <GlitchText text="Operator Authorization Required" className="font-orbitron font-black text-sm tracking-widest uppercase text-white" intensity="medium" />
-                <span className="text-[8px] text-slate-500 uppercase tracking-widest font-black">Zero-Trust Realtime Governor</span>
+                <GlitchText 
+                  text="Operator Authorization Required" 
+                  className={`font-orbitron font-black text-sm tracking-widest uppercase ${governor_ok ? 'text-white' : 'text-red-400'}`} 
+                  intensity={governor_ok ? "medium" : "high"} 
+                />
+                <span className="text-[8px] text-slate-500 uppercase tracking-widest font-black block">Zero-Trust Realtime Governor</span>
               </div>
             </div>
-            <span className="text-[9px] bg-purple-950/30 border border-purple-500/30 text-purple-400 px-2 py-0.5 rounded uppercase font-black tracking-wider">
+            <span className={`text-[9px] border px-2 py-0.5 rounded uppercase font-black tracking-wider ${
+              governor_ok 
+                ? 'bg-purple-950/30 border-purple-500/30 text-purple-400' 
+                : 'bg-red-950/30 border-red-500/30 text-red-400'
+            }`}>
               {current.type.replace(/_/g, ' ')}
             </span>
           </div>

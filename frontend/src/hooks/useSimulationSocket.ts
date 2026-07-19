@@ -44,7 +44,15 @@ const getCsrfToken = (): string => {
 };
 
 export const useSimulationSocket = (url: string) => {
-  const apiBase = useMemo(() => url.replace(/^ws/, 'http').replace(/\/ws\/heat$/, ''), [url]);
+  const apiBase = useMemo(() => {
+    try {
+      const parsed = new URL(url);
+      const protocol = parsed.protocol === 'wss:' ? 'https:' : 'http:';
+      return `${protocol}//${parsed.host}`;
+    } catch {
+      return url.replace(/^ws/, 'http').replace(/\/ws\/.*$/, '');
+    }
+  }, [url]);
   const [heat, setHeat] = useState(100);
   const [stability, setStability] = useState(100);
   const [logs, setLogs] = useState<LogEntry[]>([]);

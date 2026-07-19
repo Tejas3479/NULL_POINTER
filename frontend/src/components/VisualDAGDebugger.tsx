@@ -233,6 +233,19 @@ export const VisualDAGDebugger: React.FC<VisualDAGDebuggerProps> = ({ logs, worl
                 className="cursor-pointer group transition-all duration-300"
                 onClick={() => setSelectedNode(key)}
               >
+                {/* Secondary Holographic Orbit Ring for Active nodes */}
+                {isActive && (
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r="32"
+                    fill="none"
+                    className="stroke-current opacity-25 animate-pulse"
+                    strokeWidth="1"
+                    strokeDasharray="2 3"
+                  />
+                )}
+
                 {/* Node Circle */}
                 <circle 
                   cx={node.x} 
@@ -278,13 +291,13 @@ export const VisualDAGDebugger: React.FC<VisualDAGDebuggerProps> = ({ logs, worl
 
         {/* Real-time Telemetry Indicator */}
         <div className="absolute bottom-2 left-2 flex items-center gap-2 text-[8px] text-slate-500 uppercase tracking-widest font-black">
-          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_6px_#06b6d4]" />
           <span>LangGraph Observability Stream Active</span>
         </div>
       </div>
 
       {/* Side Detail Panel */}
-      <div className="w-full lg:w-72 border border-slate-900 bg-slate-950/40 rounded p-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
+      <div className="w-full lg:w-72 border border-slate-900/60 bg-slate-950/20 backdrop-blur-sm rounded p-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
         {selectedNode ? (
           getTraceDisplay(selectedNode)
         ) : (
@@ -301,7 +314,7 @@ export const VisualDAGDebugger: React.FC<VisualDAGDebuggerProps> = ({ logs, worl
           }
         }
         .animate-dash {
-          animation: strokeDash 0.8s linear infinite;
+          animation: strokeDash 0.5s linear infinite;
         }
       `}</style>
     </div>

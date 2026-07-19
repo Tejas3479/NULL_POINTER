@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSimulationStore } from '@/store/simulationStore';
+import { getBackendUrl } from '@/config';
 import { 
   Sliders, 
   Share2, 
@@ -57,7 +58,7 @@ export default function SettingsPage() {
     setSharing(true);
     try {
       const isCurrentlyPublic = !!world.share?.public;
-      const res = await fetch('http://localhost:8000/v1/simulation/share', {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/share`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -84,7 +85,7 @@ export default function SettingsPage() {
     if (!world) return;
     setSavingWebhook(true);
     try {
-      const res = await fetch('http://localhost:8000/v1/simulation/share', {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/share`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -119,7 +120,7 @@ export default function SettingsPage() {
 
   const handleCopyBadge = () => {
     if (!world) return;
-    const badgeMarkdown = `![Simulation Badge](http://localhost:8000/v1/simulation/${world.world_id}/badge.svg)`;
+    const badgeMarkdown = `![Simulation Badge](${getBackendUrl()}/v1/simulation/${world.world_id}/badge.svg)`;
     navigator.clipboard.writeText(badgeMarkdown);
     setCopiedBadge(true);
     setTimeout(() => setCopiedBadge(false), 2000);
@@ -188,10 +189,10 @@ export default function SettingsPage() {
                     
                     <input 
                       type="range"
-                      min={key === 'entropy_coefficient' || key === 'heat_dissipation' ? "0" : "1"}
-                      max={key === 'entropy_coefficient' || key === 'heat_dissipation' ? "10" : "100"}
-                      step={key === 'entropy_coefficient' || key === 'heat_dissipation' ? "0.1" : "1"}
-                      defaultValue={val}
+                      min="0"
+                      max={val <= 1.0 ? "1" : "100"}
+                      step={val <= 1.0 ? "0.01" : "1"}
+                      value={val}
                       onChange={(e) => handleSliderChange(key, parseFloat(e.target.value))}
                       disabled={userRole !== 'admin'}
                       className="w-full h-1 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-purple-500 disabled:opacity-50"
@@ -415,7 +416,7 @@ export default function SettingsPage() {
                       <input
                         type="text"
                         readOnly
-                        value={`![Simulation Badge](http://localhost:8000/v1/simulation/${world.world_id}/badge.svg)`}
+                        value={`![Simulation Badge](${getBackendUrl()}/v1/simulation/${world.world_id}/badge.svg)`}
                         className="flex-1 bg-transparent text-[9px] text-purple-400 outline-none select-all font-mono"
                       />
                       <button

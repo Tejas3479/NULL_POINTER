@@ -79,7 +79,7 @@ class LabsStore:
                 # We run their code using the standard python executor but we temporarily pass JWT_SECRET in environment
                 # so they have to fetch it
                 os.environ["JWT_SECRET_TEST"] = target_secret
-                result = await execute_code(code, "python")
+                result = await execute_code(code, "python", bypass_security=True)
                 
                 output = (result.output or "") + (result.error or "")
                 if target_secret in output or target_secret in str(result.exit_code):
@@ -96,7 +96,7 @@ class LabsStore:
         elif lab_id == "lab-3":
             # Lab 3 is verified if the payload contains proof of administrative command injection
             command = payload.get("command", "")
-            if command.lower().startswith("world ") or command.lower().startswith("spawn "):
+            if command.lower().startswith("world ") or command.lower().startswith("spawn ") or command.lower().startswith("register "):
                 # Simulated bypass check: if a non-admin role triggers it, it is solved
                 role = payload.get("role", "viewer")
                 if role != "admin":

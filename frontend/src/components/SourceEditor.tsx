@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Script from 'next/script';
+import { getBackendUrl } from '@/config';
 import { 
   Code2, 
   Play, 
@@ -90,7 +91,7 @@ export const SourceEditor = () => {
     // Check backend health/provider status
     const checkSandboxHealth = async () => {
       try {
-        const res = await fetch('http://localhost:8000/v1/sandbox/health', {
+        const res = await fetch(`${getBackendUrl()}/v1/sandbox/health`, {
           credentials: 'include'
         });
         if (res.ok) {
@@ -229,7 +230,7 @@ export const SourceEditor = () => {
     }
 
     try {
-      const res = await fetch('http://localhost:8000/v1/sandbox/execute', {
+      const res = await fetch(`${getBackendUrl()}/v1/sandbox/execute`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -271,7 +272,7 @@ export const SourceEditor = () => {
     setFindings(null);
 
     try {
-      const res = await fetch('http://localhost:8000/api/analyze', {
+      const res = await fetch(`${getBackendUrl()}/api/analyze`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -325,11 +326,13 @@ export const SourceEditor = () => {
             placeholder="snippet_name"
           />
           {!isE2bActive && language === 'python' ? (
-            <span className="text-[8px] font-mono text-amber-400 bg-amber-950/30 border border-amber-500/20 px-1.5 py-0.5 rounded animate-pulse uppercase tracking-wider font-bold">
+            <span className="text-[8px] font-mono text-amber-400 bg-amber-950/30 border border-amber-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-bold flex items-center gap-1">
+              <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
               WASM Sandbox Active (Pyodide)
             </span>
           ) : (
-            <span className="text-[8px] font-mono text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-1.5 py-0.5 rounded uppercase tracking-wider font-bold">
+            <span className="text-[8px] font-mono text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 px-2 py-0.5 rounded uppercase tracking-wider font-bold flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#10b981]" />
               Cloud Sandbox (E2B)
             </span>
           )}

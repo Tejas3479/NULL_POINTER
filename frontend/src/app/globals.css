@@ -3,69 +3,100 @@
 @theme {
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-orbitron: var(--font-orbitron);
+  --color-cyber-cyan: #06b6d4;
+  --color-cyber-purple: #a855f7;
+  --color-cyber-emerald: #10b981;
+  --color-cyber-red: #f43f5e;
+  --color-cyber-amber: #f59e0b;
 }
 
 :root {
-  --background: 0 0% 2%;
+  --background: 0 0% 1.5%;
   --foreground: 210 40% 98%;
   --card: 0 0% 3%;
   --card-foreground: 210 40% 98%;
   --popover: 0 0% 3%;
   --popover-foreground: 210 40% 98%;
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  --primary: 271 91% 65%;
+  --primary-foreground: 0 0% 100%;
   --secondary: 217.2 32.6% 17.5%;
   --secondary-foreground: 210 40% 98%;
   --muted: 217.2 32.6% 17.5%;
   --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
+  --accent: 271 91% 65%;
   --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
+  --destructive: 343 90% 60%;
   --destructive-foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
+  --border: 217 30% 12%;
+  --input: 217 30% 12%;
+  --ring: 271 91% 65%;
 }
 
 body {
   font-family: var(--font-sans);
+  overflow-x: hidden;
 }
 
 .font-mono-custom {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
-.terminal-scroll::-webkit-scrollbar {
-  width: 4px;
+/* Custom Scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
 }
 
-.terminal-scroll::-webkit-scrollbar-track {
-  background: transparent;
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(168, 85, 247, 0.01);
 }
 
-.terminal-scroll::-webkit-scrollbar-thumb {
-  background: #1e293b;
-  border-radius: 2px;
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(168, 85, 247, 0.15);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.02);
 }
 
-.terminal-scroll::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.35);
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
 }
 
+/* Premium Glassmorphism styling with border-glow and double filters */
 .glass {
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(8, 10, 15, 0.65);
+  backdrop-filter: blur(16px) saturate(120%);
+  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4), 
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass:hover {
+  border-color: rgba(168, 85, 247, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), 
+              0 0 15px rgba(168, 85, 247, 0.03),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Premium Vignette Overlay (simulating physical terminal curved corners) */
+.crt-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.65) 150%);
+  z-index: 45;
 }
 
 .scanline {
   width: 100%;
   height: 2px;
-  background: rgba(0, 255, 255, 0.1);
-  opacity: 0.1;
+  background: linear-gradient(to right, rgba(6, 182, 212, 0.15), rgba(168, 85, 247, 0.15));
+  opacity: 0.12;
   position: absolute;
   bottom: 100%;
-  animation: scanline 6s linear infinite;
+  animation: scanline 8s linear infinite;
 }
 
 @keyframes scanline {
@@ -76,26 +107,49 @@ body {
 /* Cyberpunk Glitch & Alarm Animations */
 @keyframes glitch-shake {
   0% { transform: translate(0, 0) skew(0deg); }
-  20% { transform: translate(-2px, 2px) skew(-1deg); }
-  40% { transform: translate(-2px, -2px) skew(1deg); }
-  60% { transform: translate(2px, 2px) skew(-1deg); }
-  80% { transform: translate(2px, -2px) skew(0deg); }
+  20% { transform: translate(-1.5px, 1.5px) skew(-0.5deg); }
+  40% { transform: translate(-1.5px, -1.5px) skew(0.5deg); }
+  60% { transform: translate(1.5px, 1.5px) skew(-0.5deg); }
+  80% { transform: translate(1.5px, -1.5px) skew(0deg); }
   100% { transform: translate(0, 0) skew(0deg); }
 }
 
 @keyframes alarm-pulse {
-  0%, 100% { box-shadow: 0 0 15px rgba(244, 63, 94, 0.05), inset 0 0 15px rgba(244, 63, 94, 0.05); border-color: rgba(244, 63, 94, 0.3); }
-  50% { box-shadow: 0 0 30px rgba(244, 63, 94, 0.25), inset 0 0 25px rgba(244, 63, 94, 0.15); border-color: rgba(244, 63, 94, 0.75); }
+  0%, 100% { 
+    box-shadow: 0 0 15px rgba(244, 63, 94, 0.05), inset 0 0 15px rgba(244, 63, 94, 0.05); 
+    border-color: rgba(244, 63, 94, 0.35); 
+  }
+  50% { 
+    box-shadow: 0 0 35px rgba(244, 63, 94, 0.3), inset 0 0 25px rgba(244, 63, 94, 0.2); 
+    border-color: rgba(244, 63, 94, 0.95); 
+  }
 }
 
 .glitch-alarm {
-  animation: glitch-shake 0.3s steps(2) infinite, alarm-pulse 2s ease-in-out infinite;
+  animation: glitch-shake 0.3s steps(2) infinite, alarm-pulse 1.8s ease-in-out infinite;
+}
+
+/* Breathing Neon Pulsing */
+@keyframes neon-breathe {
+  0%, 100% {
+    opacity: 0.65;
+    filter: drop-shadow(0 0 2px var(--color-cyber-purple));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px var(--color-cyber-purple));
+  }
+}
+
+.neon-glow-pulse {
+  animation: neon-breathe 2.5s ease-in-out infinite;
 }
 
 /* 1px Tactical Grid Overlay */
 .grid-bg-overlay {
-  background-size: 24px 24px;
+  background-size: 32px 32px;
   background-image: 
-    linear-gradient(to right, rgba(148, 163, 184, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+    linear-gradient(to right, rgba(148, 163, 184, 0.015) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.015) 1px, transparent 1px);
 }
+

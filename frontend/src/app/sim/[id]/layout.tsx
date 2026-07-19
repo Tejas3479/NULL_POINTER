@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSimulationStore } from '@/store/simulationStore';
+import { getBackendUrl } from '@/config';
 import { GlitchText } from '@/components/GlitchText';
 import { HITLGateModal } from '@/components/HITLGateModal';
 import { 
@@ -52,7 +53,7 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
 
   // 1. Auth check globally for layout
   useEffect(() => {
-    fetch('http://localhost:8000/auth/me', { 
+    fetch(`${getBackendUrl()}/auth/me`, { 
       credentials: 'include' 
     })
       .then((res) => {
@@ -78,7 +79,7 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
   }, [id, initSocket, loadingAuth]);
 
   const handleLogout = async () => {
-    await fetch('http://localhost:8000/auth/logout', { 
+    await fetch(`${getBackendUrl()}/auth/logout`, { 
       method: 'POST', 
       credentials: 'include',
       headers: { 'X-CSRF-Token': getCsrfToken() }
@@ -188,12 +189,12 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
       </AnimatePresence>
 
       {/* DESKTOP SIDEBAR */}
-      <aside className="hidden md:flex md:w-64 xl:w-72 bg-slate-950/50 border-r border-slate-900 flex-col p-6 select-none justify-between h-full min-h-0 z-10 shrink-0">
+      <aside className="hidden md:flex md:w-64 xl:w-72 bg-slate-950/30 backdrop-blur-md border-r border-slate-900/60 flex-col p-6 select-none justify-between h-full min-h-0 z-10 shrink-0">
         <div className="flex flex-col gap-6 min-h-0 overflow-y-auto custom-scrollbar pr-1">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="bg-blue-500/20 p-1.5 rounded border border-blue-500/30">
-              <Cpu className="text-blue-400" size={20} />
+            <div className="bg-purple-950/20 p-1.5 rounded border border-purple-500/30 shadow-[0_0_12px_rgba(168,85,247,0.15)]">
+              <Cpu className="text-purple-400" size={20} />
             </div>
             <div>
               <h1 className="font-orbitron text-md font-black tracking-tighter text-white">NULL_POINTER</h1>
@@ -208,11 +209,11 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
             <div className="flex flex-col gap-1">
               <div className="flex justify-between items-center text-[9px] uppercase text-slate-500 font-bold">
                 <span className="flex items-center gap-1"><Shield size={12} /> System Integrity</span>
-                <span className={stability < 40 ? 'text-red-500' : 'text-emerald-400'}>{stability}%</span>
+                <span className={stability < 40 ? 'text-red-500 font-bold animate-pulse' : 'text-emerald-400 font-bold'}>{stability}%</span>
               </div>
-              <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+              <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/80">
                 <motion.div 
-                  className={`h-full ${stability < 40 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                  className={`h-full bg-gradient-to-r ${stability < 40 ? 'from-red-600 to-red-400' : 'from-emerald-600 to-cyan-400 shadow-[0_0_8px_#10b981]'}`}
                   initial={{ width: 0 }}
                   animate={{ width: `${stability}%` }}
                 />
@@ -222,11 +223,11 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
             <div className="flex flex-col gap-1">
               <div className="flex justify-between items-center text-[9px] uppercase text-slate-500 font-bold">
                 <span className="flex items-center gap-1"><Flame size={12} /> Timeline Heat</span>
-                <span className={heat > 70 ? 'text-red-400' : 'text-orange-400'}>{heat.toFixed(1)}%</span>
+                <span className={heat > 70 ? 'text-red-400 font-bold animate-pulse' : 'text-orange-400 font-bold'}>{heat.toFixed(1)}%</span>
               </div>
-              <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+              <div className="h-1.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800/80">
                 <motion.div 
-                  className={`h-full ${heat > 80 ? 'bg-red-500' : heat > 50 ? 'bg-orange-500' : 'bg-blue-500'}`}
+                  className="h-full bg-gradient-to-r from-blue-500 via-orange-500 to-red-500"
                   initial={{ width: 0 }}
                   animate={{ width: `${heat}%` }}
                 />
@@ -235,21 +236,28 @@ export default function SimulationLayout({ children }: { children: React.ReactNo
           </div>
 
           {/* Nav */}
-          <nav className="flex flex-col gap-2">
+          <nav className="flex flex-col gap-1.5 relative">
             {navLinks.map((link) => {
               const isActive = pathname === link.path;
               return (
                 <Link
                   key={link.path}
                   href={link.path}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded border text-[10px] font-black uppercase tracking-wider transition-all duration-300 ${
-                    isActive 
-                      ? 'border-purple-500 bg-purple-950/20 text-white shadow-[0_0_15px_rgba(168,85,247,0.15)]' 
-                      : 'border-transparent text-slate-400 hover:border-slate-800 hover:text-slate-200 hover:bg-slate-900/30'
-                  }`}
+                  className="group relative flex items-center gap-3 px-3.5 py-2.5 rounded text-[10px] font-black uppercase tracking-wider transition-all duration-200"
                 >
-                  <span className={isActive ? 'text-purple-400' : 'text-slate-500'}>{link.icon}</span>
-                  <GlitchText text={link.label} intensity="low" />
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeSidebarLink"
+                      className="absolute inset-0 bg-purple-950/20 border border-purple-500/30 rounded shadow-[0_0_12px_rgba(168,85,247,0.1)] z-0"
+                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                  <span className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-purple-400' : 'text-slate-500 group-hover:text-slate-300'}`}>
+                    {link.icon}
+                  </span>
+                  <span className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'}`}>
+                    <GlitchText text={link.label} intensity="low" />
+                  </span>
                 </Link>
               );
             })}

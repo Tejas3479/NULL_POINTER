@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Cpu, History, Check, Trash2, Zap, AlertTriangle, TrendingUp, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getBackendUrl } from '@/config';
 
 interface GhostVariant {
   id: string;
@@ -33,7 +34,7 @@ export const GhostEvolutionPanel = ({ worldId }: { worldId: string }) => {
   const fetchVariants = React.useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`http://localhost:8000/v1/ghost/variants`, { credentials: 'include' });
+      const res = await fetch(`${getBackendUrl()}/v1/ghost/variants`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setVariants(data);
@@ -66,7 +67,7 @@ export const GhostEvolutionPanel = ({ worldId }: { worldId: string }) => {
     setActionLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`http://localhost:8000/v1/ghost/variants/${hash}/promote`, {
+      const res = await fetch(`${getBackendUrl()}/v1/ghost/variants/${hash}/promote`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -93,7 +94,7 @@ export const GhostEvolutionPanel = ({ worldId }: { worldId: string }) => {
     setActionLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`http://localhost:8000/v1/ghost/variants/${hash}/reject`, {
+      const res = await fetch(`${getBackendUrl()}/v1/ghost/variants/${hash}/reject`, {
         method: 'POST',
         credentials: 'include',
         headers: {

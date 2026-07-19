@@ -835,11 +835,15 @@ async def fork_snapshot(id: str, current_user: User = Depends(get_current_user))
         new_state = deepcopy(snapshot["state_jsonb"])
         new_state["world_id"] = fork_world_id
         
-        world_store.supabase.table("simulation_worlds").insert({
-            "world_id": fork_world_id,
-            "state": new_state,
-            "updated_at": utc_now()
-        }).execute()
+        if world_store.supabase:
+            world_store.supabase.table("simulation_worlds").insert({
+                "world_id": fork_world_id,
+                "state": new_state,
+                "updated_at": utc_now()
+            }).execute()
+        else:
+            local_path = world_store.path.parent / f"world_state_{fork_world_id}.json"
+            local_path.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
         
         return {"fork_world_id": fork_world_id, "world_id": fork_world_id, "world": new_state}
     except Exception as e:
@@ -935,12 +939,16 @@ async def create_world(payload: CreateWorldRequest, current_user: User = Depends
         # Restore random generator state
         random.setstate(old_state)
         
-        # 6. Save world in Supabase database
-        world_store.supabase.table("simulation_worlds").insert({
-            "world_id": world_id,
-            "state": new_state,
-            "updated_at": utc_now()
-        }).execute()
+        # 6. Save world in Supabase database or local file
+        if world_store.supabase:
+            world_store.supabase.table("simulation_worlds").insert({
+                "world_id": world_id,
+                "state": new_state,
+                "updated_at": utc_now()
+            }).execute()
+        else:
+            local_path = world_store.path.parent / f"world_state_{world_id}.json"
+            local_path.write_text(json.dumps(new_state, indent=2), encoding="utf-8")
         
         # 7. Write history lore chronicle entry
         try:
@@ -957,13 +965,26 @@ async def create_world(payload: CreateWorldRequest, current_user: User = Depends
 
 @app.get("/v1/simulation/{world_id}/state")
 async def get_world_state_by_id(world_id: str, current_user: User = Depends(get_current_user)):
-    try:
-        res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
-        if res.data:
-            return res.data[0].get("state")
+    if world_store.state and world_store.state.get("world_id") == world_id:
+        return world_store.snapshot()
+    if world_store.supabase:
+        try:
+            res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
+            if res.data:
+                return res.data[0].get("state")
+            raise HTTPException(status_code=404, detail="World not found")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    else:
+        local_path = world_store.path.parent / f"world_state_{world_id}.json"
+        if local_path.exists():
+            try:
+                return json.loads(local_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to load local world state: {str(e)}")
         raise HTTPException(status_code=404, detail="World not found")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 @app.websocket("/ws/heat")
 async def websocket_endpoint(
@@ -1062,6 +1083,26 @@ async def handle_debug_command(command: str, websocket: WebSocket):
                 return
             except ValueError:
                 pass
+
+    if lowered.startswith("register "):
+        parts = command.strip().split(None, 2)
+        if len(parts) == 3:
+            name = parts[1]
+            sse_url = parts[2]
+            try:
+                from backend.services.mcp_manager import mcp_manager
+                await mcp_manager.register_server(name, sse_url)
+                await manager.broadcast_to_room(world_id, {"type": "world_update", "world": world_store.snapshot()})
+                await manager.send_personal_message(json.dumps({
+                    "type": "admin_response",
+                    "message": f"REGISTER_SUCCESS: Registered MCP server '{name}'"
+                }), websocket)
+            except Exception as e:
+                await manager.send_personal_message(json.dumps({
+                    "type": "admin_response",
+                    "message": f"REGISTER_FAILED: {str(e)}"
+                }), websocket)
+            return
 
     await manager.send_personal_message(json.dumps({
         "type": "admin_response",
@@ -1371,6 +1412,34 @@ async def get_public_worlds():
         ]
         return mock_worlds
 
+    if not world_store.supabase:
+        public_worlds = []
+        # Add current local-null-pointer if public
+        if world_store.state and world_store.state.get("share", {}).get("public"):
+            w = world_store.snapshot()
+            w["owner"] = w.get("owner", "System")
+            w["view_count"] = w.get("view_count", 0)
+            w["updated_at"] = utc_now()
+            public_worlds.append(w)
+            
+        # Scan local files
+        try:
+            data_dir = world_store.path.parent
+            for filename in os.listdir(data_dir):
+                if filename.startswith("world_state_") and filename.endswith(".json"):
+                    try:
+                        loaded = json.loads((data_dir / filename).read_text(encoding="utf-8"))
+                        if loaded.get("share", {}).get("public") and loaded.get("world_id") != world_store.state.get("world_id"):
+                            loaded["owner"] = loaded.get("owner", "System")
+                            loaded["view_count"] = loaded.get("view_count", 0)
+                            loaded["updated_at"] = utc_now()
+                            public_worlds.append(loaded)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"!!! Error reading local directory: {e} !!!")
+        return public_worlds
+
     try:
         res = world_store.supabase.table("simulation_worlds").select("state, updated_at").execute()
         public_worlds = []
@@ -1412,6 +1481,20 @@ async def get_leaderboard():
                 worlds.append(state)
         except Exception as e:
             print(f"!!! Leaderboard DB fetch error: {e} !!!")
+    else:
+        try:
+            data_dir = world_store.path.parent
+            for filename in os.listdir(data_dir):
+                if filename.startswith("world_state_") and filename.endswith(".json"):
+                    try:
+                        loaded = json.loads((data_dir / filename).read_text(encoding="utf-8"))
+                        if "owner" not in loaded:
+                            loaded["owner"] = "System"
+                        worlds.append(loaded)
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"!!! Leaderboard local scan error: {e} !!!")
             
     # Include current memory world
     if world_store.state:
@@ -1564,6 +1647,18 @@ async def get_badge(world_id: str):
                 name = state.get("name", "NULL_POINTER")
         except Exception:
             pass
+    else:
+        # Local fallback reading
+        local_path = world_store.path.parent / f"world_state_{world_id}.json"
+        if local_path.exists():
+            try:
+                state = json.loads(local_path.read_text(encoding="utf-8"))
+                stability = state.get("stability", 100)
+                agent_count = len([a for a in state.get("agents", []) if a.get("active")])
+                tick = state.get("tick", 0)
+                name = state.get("name", "NULL_POINTER")
+            except Exception:
+                pass
 
     # Clean name for XML safety
     import html

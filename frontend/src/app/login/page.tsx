@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Code, Globe, Cpu, Lock, Terminal } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getBackendUrl } from '@/config';
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export default function LoginPage() {
     // Standard OAuth2 Redirect flows to Identity Providers
     const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || "github_client_id_placeholder";
     const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "google_client_id_placeholder";
-    const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    const BACKEND_URL = getBackendUrl();
     
     if (provider === 'github') {
       window.location.href = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&scope=user:email`;
@@ -37,7 +38,7 @@ export default function LoginPage() {
     };
 
     try {
-      const res = await fetch('http://localhost:8000/auth/login', {
+      const res = await fetch(`${getBackendUrl()}/auth/login`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -68,17 +69,18 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 font-mono flex items-center justify-center p-6 relative overflow-y-auto">
-      {/* CRT Scanline & Noise Overlay */}
-      <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_4px,4px_100%] opacity-40 mix-blend-overlay" />
+      {/* CRT Scanline, Vignette & Noise Overlay */}
+      <div className="crt-vignette" />
+      <div className="absolute inset-0 pointer-events-none z-50 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.03),rgba(0,255,0,0.01),rgba(0,0,255,0.03))] bg-[length:100%_4px,4px_100%] opacity-30 mix-blend-overlay" />
       
       {/* Dynamic Glowing Background Grid */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none bg-[linear-gradient(to_right,#a855f7_1px,transparent_1px),linear-gradient(to_bottom,#06b6d4_1px,transparent_1px)] bg-[size:30px_30px]" />
+      <div className="absolute inset-0 opacity-5 pointer-events-none bg-[linear-gradient(to_right,#a855f7_1px,transparent_1px),linear-gradient(to_bottom,#06b6d4_1px,transparent_1px)] bg-[size:32px_32px]" />
 
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-[480px] bg-slate-950/40 backdrop-blur-md border border-slate-900 rounded-lg p-8 relative z-10 shadow-[0_0_50px_rgba(168,85,247,0.15)]"
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="w-full max-w-[480px] glass rounded-lg p-8 relative z-10 shadow-[0_0_60px_rgba(168,85,247,0.15),inset_0_1px_0_rgba(255,255,255,0.05)] border-purple-500/10"
       >
         {/* Terminal Header Bar */}
         <div className="absolute top-0 inset-x-0 h-6 bg-purple-950/20 border-b border-purple-500/20 flex items-center px-4 justify-between">

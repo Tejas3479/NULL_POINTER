@@ -99,6 +99,10 @@ SAFE_BUILTINS = {
     "min": min,
     "max": max,
     "round": round,
+    "getattr": getattr,
+    "hasattr": hasattr,
+    "vars": vars,
+    "type": type,
     "Exception": Exception,
     "ValueError": ValueError,
     "TypeError": TypeError,
@@ -226,24 +230,25 @@ def _run_sandbox_worker(code: str, conn) -> None:
     })
 
 
-def _execute_with_replit(code: str, language: str, timeout_seconds: int) -> ExecutionResult:
+def _execute_with_replit(code: str, language: str, timeout_seconds: int, bypass_security: bool = False) -> ExecutionResult:
     """Hardened, secure local execution sandbox representing Replit executor."""
     started = time.perf_counter()
     provider = "replit"
     
     # 1. Run strict AST filter
-    try:
-        secure_ast_filter(code)
-    except Exception as e:
-        # Audit log a blocked attempt
-        write_audit_log(code, language, provider, success=False)
-        return _result(
-            success=False,
-            error=f"Security error: {e}",
-            execution_time=time.perf_counter() - started,
-            provider=provider,
-            exit_code=1
-        )
+    if not bypass_security:
+        try:
+            secure_ast_filter(code)
+        except Exception as e:
+            # Audit log a blocked attempt
+            write_audit_log(code, language, provider, success=False)
+            return _result(
+                success=False,
+                error=f"Security error: {e}",
+                execution_time=time.perf_counter() - started,
+                provider=provider,
+                exit_code=1
+            )
         
     # Audit log validation success
     write_audit_log(code, language, provider, success=True)
@@ -415,7 +420,7 @@ def _execute_with_e2b(code: str, language: str, timeout_seconds: int) -> Executi
         )
 
 
-async def execute_code(code: str, language: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS) -> ExecutionResult:
+async def execute_code(code: str, language: str, timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS, bypass_security: bool = False) -> ExecutionResult:
     if language not in SUPPORTED_LANGUAGES:
         raise ValueError(f"Unsupported language: {language}")
 
@@ -425,7 +430,7 @@ async def execute_code(code: str, language: str, timeout_seconds: int = DEFAULT_
 
     # Route Python securely through our hardened local multiprocessing provider
     if language == "python":
-        return await asyncio.to_thread(_execute_with_replit, code, language, timeout_seconds)
+        return await asyncio.to_thread(_execute_with_replit, code, language, timeout_seconds, bypass_security)
 
     return await asyncio.to_thread(_execute_with_docker, code, language, timeout_seconds)
 

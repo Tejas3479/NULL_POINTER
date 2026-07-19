@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import { getBackendUrl } from '@/config';
 import { 
   Globe, 
   Eye, 
@@ -131,7 +132,7 @@ export default function GalleryPage() {
   useEffect(() => {
     const fetchPublicWorlds = async () => {
       try {
-        const res = await fetch("http://localhost:8000/v1/worlds/public", { credentials: "include" });
+        const res = await fetch(`${getBackendUrl()}/v1/worlds/public`, { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setWorlds(data);

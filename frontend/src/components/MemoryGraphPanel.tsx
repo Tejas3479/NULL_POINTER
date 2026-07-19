@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { RefreshCw, BrainCircuit, Activity, Link2, Info } from "lucide-react";
+import { getBackendUrl } from '@/config';
 
 interface Node {
   id: string;
@@ -42,7 +43,7 @@ export const MemoryGraphPanel = () => {
 
   const fetchGraphData = async () => {
     try {
-      const res = await fetch("http://localhost:8000/v1/simulation/memory/graph", {
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/memory/graph`, {
         credentials: "include"
       });
       if (res.ok) {
@@ -88,7 +89,7 @@ export const MemoryGraphPanel = () => {
         const nodeMap = new Map(currentNodes.map(n => [n.id, n]));
 
         // 1. Repulsion force between all nodes (Coulomb-like)
-        const kRepulsion = 1600;
+        const kRepulsion = 2200;
         for (let i = 0; i < currentNodes.length; i++) {
           const u = currentNodes[i];
           if (u.id === draggingNodeId) continue;
@@ -119,8 +120,8 @@ export const MemoryGraphPanel = () => {
         }
 
         // 2. Attraction force along links (Hooke-like)
-        const kAttraction = 0.05;
-        const restLength = 120;
+        const kAttraction = 0.065;
+        const restLength = 100;
         links.forEach((link) => {
           const u = nodeMap.get(link.source);
           const v = nodeMap.get(link.target);
@@ -146,7 +147,7 @@ export const MemoryGraphPanel = () => {
         });
 
         // 3. Gravity/Centering force
-        const kGravity = 0.015;
+        const kGravity = 0.025;
         currentNodes.forEach((node) => {
           if (node.id === draggingNodeId) return;
           const dx = center.x - (node.x || 0);
@@ -156,7 +157,7 @@ export const MemoryGraphPanel = () => {
         });
 
         // 4. Update coordinates with friction/damping
-        const damping = 0.78;
+        const damping = 0.84;
         const updated = currentNodes.map((n) => {
           if (n.id === draggingNodeId) return n;
           
@@ -273,7 +274,7 @@ export const MemoryGraphPanel = () => {
 
         <div className="mt-2 text-[9px] text-slate-500 leading-normal border-t border-slate-900/50 pt-2 flex items-start gap-1 font-sans select-text">
           <Info size={11} className="shrink-0 text-slate-600 mt-0.5" />
-          <span>Knowledge Graph Memory indexes relational nodes natively using cognitive entity mappings, preventing context fragmentation in multi-hop RAG retrievals.</span>
+          <span>Knowledge Graph Memory indexes relational nodes natively using cognitive entity mappings, preventing context fragmentation in RAG retrievals.</span>
         </div>
       </div>
     );
@@ -289,96 +290,124 @@ export const MemoryGraphPanel = () => {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-full w-full min-h-0 bg-slate-950/80 border border-slate-900 rounded-lg p-4 font-mono select-none overflow-hidden">
+    <div className="flex flex-col lg:flex-row gap-4 h-full w-full min-h-0 bg-slate-950/20 backdrop-blur-sm border border-slate-900 rounded-lg p-4 font-mono select-none overflow-hidden">
       {/* Interactive Visual Network Canvas */}
       <div 
         ref={containerRef}
-        className="flex-grow border border-slate-900/60 bg-black/60 rounded p-2 relative flex items-center justify-center min-h-[300px]"
+        className="flex-grow border border-slate-900/60 bg-black/60 rounded p-4 relative flex flex-col min-h-[300px] overflow-hidden"
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        <svg 
-          ref={svgRef}
-          viewBox="0 0 600 400"
-          className="w-full h-full aspect-[600/400]"
-        >
-          {/* Dynamic Link Lines */}
-          {links.map((link, idx) => {
-            const u = nodes.find(n => n.id === link.source);
-            const v = nodes.find(n => n.id === link.target);
-            if (!u || !v) return null;
+        {/* Node Legends Bar */}
+        <div className="flex flex-wrap gap-2 pb-3 border-b border-slate-900/40 mb-2 shrink-0 select-none z-10">
+          {[
+            { label: 'Agent', color: 'bg-purple-950/80 border-purple-500/50 text-purple-400' },
+            { label: 'Faction', color: 'bg-emerald-950/80 border-emerald-500/50 text-emerald-400' },
+            { label: 'Anomaly', color: 'bg-red-950/80 border-red-500/50 text-red-400' },
+            { label: 'Archetype', color: 'bg-blue-950/80 border-blue-500/50 text-blue-400' },
+            { label: 'System', color: 'bg-cyan-950/80 border-cyan-500/50 text-cyan-400' }
+          ].map((item, idx) => (
+            <span key={idx} className={`text-[8px] uppercase font-mono px-2 py-0.5 rounded border flex items-center gap-1.5 ${item.color}`}>
+              <span className="w-1 h-1 rounded-full bg-current" />
+              {item.label}
+            </span>
+          ))}
+        </div>
 
-            return (
-              <g key={idx}>
-                {/* Visual Line */}
-                <line
-                  x1={u.x}
-                  y1={u.y}
-                  x2={v.x}
-                  y2={v.y}
-                  stroke="#1e293b"
-                  strokeWidth="1"
-                  strokeDasharray="2 3"
-                />
-                
-                {/* Floating link label at center */}
-                <text
-                  x={((u.x || 0) + (v.x || 0)) / 2}
-                  y={((u.y || 0) + (v.y || 0)) / 2 - 4}
-                  textAnchor="middle"
-                  className="fill-slate-600 text-[6px] uppercase tracking-tighter"
+        <div className="flex-grow relative flex items-center justify-center min-h-0">
+          <svg 
+            ref={svgRef}
+            viewBox="0 0 600 400"
+            className="w-full h-full max-h-[340px] aspect-[600/400]"
+          >
+            {/* Dynamic Link Lines */}
+            {links.map((link, idx) => {
+              const u = nodes.find(n => n.id === link.source);
+              const v = nodes.find(n => n.id === link.target);
+              if (!u || !v) return null;
+
+              return (
+                <g key={idx}>
+                  {/* Visual Line */}
+                  <line
+                    x1={u.x}
+                    y1={u.y}
+                    x2={v.x}
+                    y2={v.y}
+                    stroke="#1e293b"
+                    strokeWidth="1"
+                    strokeDasharray="2 3"
+                  />
+                  
+                  {/* Floating link label at center */}
+                  <text
+                    x={((u.x || 0) + (v.x || 0)) / 2}
+                    y={((u.y || 0) + (v.y || 0)) / 2 - 4}
+                    textAnchor="middle"
+                    className="fill-slate-600 text-[6px] uppercase tracking-tighter"
+                  >
+                    {link.label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Interactive Nodes */}
+            {nodes.map((node) => {
+              const isHovered = hoveredNode?.id === node.id;
+              const isSelected = selectedNode?.id === node.id;
+              
+              return (
+                <g 
+                  key={node.id} 
+                  className="cursor-grab active:cursor-grabbing"
+                  transform={`translate(${node.x || 0}, ${node.y || 0})`}
+                  onMouseDown={(e) => handleMouseDown(e, node.id)}
+                  onMouseEnter={() => setHoveredNode(node)}
+                  onMouseLeave={() => setHoveredNode(null)}
                 >
-                  {link.label}
-                </text>
-              </g>
-            );
-          })}
+                  {/* Visual node outline glow */}
+                  {isSelected && (
+                    <circle
+                      r="22"
+                      className="fill-none stroke-purple-500/40 animate-pulse"
+                      strokeWidth="1.5"
+                      strokeDasharray="2 3"
+                    />
+                  )}
 
-          {/* Interactive Nodes */}
-          {nodes.map((node) => {
-            const isHovered = hoveredNode?.id === node.id;
-            const isSelected = selectedNode?.id === node.id;
-            
-            return (
-              <g 
-                key={node.id} 
-                className="cursor-grab active:cursor-grabbing"
-                transform={`translate(${node.x || 0}, ${node.y || 0})`}
-                onMouseDown={(e) => handleMouseDown(e, node.id)}
-                onMouseEnter={() => setHoveredNode(node)}
-                onMouseLeave={() => setHoveredNode(null)}
-              >
-                {/* Node circle outline wrapper */}
-                <circle
-                  r={isSelected ? "18" : "15"}
-                  className={`transition-all duration-200 ${getNodeColorClass(node.type, isHovered || isSelected)}`}
-                  strokeWidth={isSelected ? "2" : "1"}
-                />
+                  {/* Node circle outline wrapper */}
+                  <circle
+                    r={isSelected ? "18" : "15"}
+                    className={`transition-all duration-200 ${getNodeColorClass(node.type, isHovered || isSelected)}`}
+                    strokeWidth={isSelected ? "2" : "1"}
+                  />
 
-                {/* Initial Letter */}
-                <text
-                  dy="3.5"
-                  textAnchor="middle"
-                  className="fill-white text-[8px] font-bold uppercase pointer-events-none"
-                >
-                  {node.label.charAt(0)}
-                </text>
+                  {/* Initial Letter */}
+                  <text
+                    dy="3.5"
+                    textAnchor="middle"
+                    className="fill-white text-[8px] font-bold uppercase pointer-events-none"
+                  >
+                    {node.label.charAt(0)}
+                  </text>
 
-                {/* Node Label Text */}
-                <text
-                  y="26"
-                  textAnchor="middle"
-                  className={`text-[7px] uppercase tracking-wide font-black pointer-events-none ${
-                    isSelected ? "fill-slate-200" : isHovered ? "fill-slate-300" : "fill-slate-500"
-                  }`}
-                >
-                  {node.label}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
+                  {/* Node Label Text */}
+                  <text
+                    y="26"
+                    textAnchor="middle"
+                    className={`text-[7px] uppercase tracking-wide font-black pointer-events-none ${
+                      isSelected ? "fill-slate-200" : isHovered ? "fill-slate-300" : "fill-slate-500"
+                    }`}
+                  >
+                    {node.label}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
 
         {/* Real-time Indicator */}
         <div className="absolute bottom-2 left-2 flex items-center gap-2 text-[8px] text-slate-500 uppercase tracking-widest font-black pointer-events-none">
@@ -388,7 +417,7 @@ export const MemoryGraphPanel = () => {
       </div>
 
       {/* Side Relation Detail Card */}
-      <div className="w-full lg:w-72 border border-slate-900 bg-slate-950/40 rounded p-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
+      <div className="w-full lg:w-72 border border-slate-900 bg-slate-950/20 backdrop-blur-sm rounded p-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
         <div className="flex items-center gap-2 text-purple-400 mb-3 pb-2 border-b border-slate-900">
           <Link2 size={14} />
           <h3 className="font-orbitron text-[10px] font-black uppercase tracking-wider">
@@ -407,3 +436,4 @@ export const MemoryGraphPanel = () => {
     </div>
   );
 };
+

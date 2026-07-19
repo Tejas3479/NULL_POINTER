@@ -49,8 +49,8 @@ const NeuralNodes = ({ count = 200, isAttacked = false, variant = 'sidebar' }: {
   });
 
   // Theme-compliant colors (Cyan/Purple theme)
-  const nodeColor = isAttacked ? "#ef4444" : variant === 'background' ? "#06b6d4" : "#00FF41";
-  const lineColor = isAttacked ? "#ef4444" : variant === 'background' ? "#a855f7" : "#00FF41";
+  const nodeColor = isAttacked ? "#ef4444" : variant === 'background' ? "#06b6d4" : "#a855f7";
+  const lineColor = isAttacked ? "#ef4444" : variant === 'background' ? "#a855f7" : "#06b6d4";
 
   return (
     <group>
@@ -109,9 +109,9 @@ export const NeuralNet = ({
   }
 
   return (
-    <div className={`w-full h-full min-h-[200px] bg-black/40 rounded-lg border border-[#00FF41]/20 overflow-hidden relative ${className}`}>
+    <div className={`w-full h-full min-h-[200px] bg-black/40 rounded-lg border border-purple-500/20 overflow-hidden relative ${className}`}>
       <div className="absolute top-2 left-3 z-10">
-        <span className="text-[10px] font-black text-[#00FF41]/60 uppercase tracking-[0.3em]">Neural_Web::Active</span>
+        <span className="text-[10px] font-black text-purple-400/60 uppercase tracking-[0.3em]">Neural_Web::Active</span>
       </div>
       
       <Canvas camera={{ position: [0, 0, 5], fov: 60 }}>

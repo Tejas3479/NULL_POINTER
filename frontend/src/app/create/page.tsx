@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { getBackendUrl } from '@/config';
 import { 
   Globe, 
   GitBranch, 
@@ -116,7 +117,7 @@ function WorldCreatorWizardContent() {
     if (!remixId) return;
     Promise.resolve().then(() => setLoadingRemix(true));
 
-    fetch(`http://localhost:8000/v1/simulation/${remixId}/state`, { credentials: 'include' })
+    fetch(`${getBackendUrl()}/v1/simulation/${remixId}/state`, { credentials: 'include' })
       .then(res => {
         if (!res.ok) throw new Error("World state not found");
         return res.json();
@@ -242,7 +243,7 @@ function WorldCreatorWizardContent() {
   const handleLaunch = async () => {
     setLaunching(true);
     try {
-      const res = await fetch('http://localhost:8000/v1/worlds', {
+      const res = await fetch(`${getBackendUrl()}/v1/worlds`, {
         method: 'POST',
         credentials: 'include',
         headers: {

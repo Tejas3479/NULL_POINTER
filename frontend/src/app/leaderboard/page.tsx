@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { getBackendUrl } from '@/config';
 import { 
   Trophy, 
   Hourglass, 
@@ -47,7 +48,7 @@ export default function LeaderboardPage() {
   const fetchLeaderboard = async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
     try {
-      const res = await fetch("http://localhost:8000/v1/simulation/leaderboard", { credentials: "include" });
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/leaderboard`, { credentials: "include" });
       if (res.ok) {
         const result = await res.json();
         setData(result);

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { History, RefreshCw, Check, X, ShieldCheck, ShieldAlert, Terminal, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getBackendUrl } from '@/config';
 
 interface SandboxRun {
   success: boolean;
@@ -46,7 +47,7 @@ export const PatchHistoryPanel = ({ worldId }: { worldId: string }) => {
   const fetchTraces = React.useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`http://localhost:8000/v1/simulation/${worldId}/patches`, { credentials: 'include' });
+      const res = await fetch(`${getBackendUrl()}/v1/simulation/${worldId}/patches`, { credentials: 'include' });
       if (res.ok) {
         const data = await res.json();
         setTraces(data);

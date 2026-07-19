@@ -47,6 +47,17 @@ class TestContextCompiler(unittest.TestCase):
         res_var = context_compiler.validate_code("a = __private_var__")
         self.assertFalse(res_var["valid"])
 
+    def test_alias_import_bypasses(self):
+        # Importing a banned name via from ... import ... alias should be blocked
+        res = context_compiler.validate_code("from builtins import eval as my_eval")
+        self.assertFalse(res["valid"])
+        self.assertTrue(any("Import of banned name 'eval'" in err for err in res["errors"]))
+
+        # Importing a double underscore name should be blocked
+        res2 = context_compiler.validate_code("from math import __doc__")
+        self.assertFalse(res2["valid"])
+        self.assertTrue(any("Import of double underscore name" in err for err in res2["errors"]))
+
     def test_syntax_error(self):
         # Invalid syntax should be caught gracefully
         res = context_compiler.validate_code("if True:")

@@ -10,6 +10,7 @@ import { AgentTracer } from '@/components/AgentTracer';
 import { CrucibleLabsPanel } from '@/components/CrucibleLabsPanel';
 import { MemoryGraphPanel } from '@/components/MemoryGraphPanel';
 import { ResizableLayout } from '@/components/ResizableLayout';
+import { motion } from 'framer-motion';
 
 export default function DashboardPage() {
   const { 
@@ -44,7 +45,7 @@ export default function DashboardPage() {
             <div className="glass p-3 rounded border border-slate-900 bg-slate-950/20 flex flex-col gap-2 shrink-0">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]" />
                   <h2 className="font-orbitron text-[9px] font-black uppercase tracking-widest text-slate-300">Active Operators</h2>
                 </div>
                 <span className="text-[8px] font-mono text-slate-500 bg-slate-900/60 border border-slate-800/80 px-1.5 py-0.5 rounded">
@@ -65,55 +66,35 @@ export default function DashboardPage() {
             </div>
 
             {/* Tab selector */}
-            <div className="flex border-b border-slate-900 bg-slate-950/20 rounded p-1 shrink-0">
-              <button 
-                onClick={() => setRightTab('editor')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'editor' ? 'text-cyan-400 bg-purple-950/30 border border-cyan-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Sandbox Editor
-              </button>
-              <button 
-                onClick={() => setRightTab('patches')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'patches' ? 'text-emerald-400 bg-purple-950/30 border border-emerald-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Patch History
-              </button>
-              <button 
-                onClick={() => setRightTab('evolution')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'evolution' ? 'text-purple-400 bg-purple-950/30 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Ghost Evolution
-              </button>
-              <button 
-                onClick={() => setRightTab('traces')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'traces' ? 'text-blue-400 bg-purple-950/30 border border-blue-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Agent Tracing
-              </button>
-              <button 
-                onClick={() => setRightTab('labs')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'labs' ? 'text-amber-400 bg-purple-950/30 border border-amber-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Crucible Labs
-              </button>
-              <button 
-                onClick={() => setRightTab('memory')}
-                className={`flex-1 py-1 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer transition-all rounded ${
-                  rightTab === 'memory' ? 'text-purple-400 bg-purple-950/30 border border-purple-500/30' : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Memory Graph
-              </button>
+            <div className="flex border-b border-slate-900 bg-slate-950/40 rounded p-1 shrink-0 relative gap-1 overflow-x-auto custom-scrollbar">
+              {[
+                { id: 'editor', label: 'Sandbox Editor', color: 'text-cyan-400', activeBg: 'bg-cyan-500/10 border-cyan-500/30' },
+                { id: 'patches', label: 'Patch History', color: 'text-emerald-400', activeBg: 'bg-emerald-500/10 border-emerald-500/30' },
+                { id: 'evolution', label: 'Ghost Evolution', color: 'text-purple-400', activeBg: 'bg-purple-500/10 border-purple-500/30' },
+                { id: 'traces', label: 'Agent Tracing', color: 'text-blue-400', activeBg: 'bg-blue-500/10 border-blue-500/30' },
+                { id: 'labs', label: 'Crucible Labs', color: 'text-amber-400', activeBg: 'bg-amber-500/10 border-amber-500/30' },
+                { id: 'memory', label: 'Memory Graph', color: 'text-purple-400', activeBg: 'bg-purple-500/10 border-purple-500/30' }
+              ].map(tab => {
+                const isActive = rightTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setRightTab(tab.id as 'editor' | 'patches' | 'evolution' | 'traces' | 'labs' | 'memory')}
+                    className={`flex-1 min-w-[90px] py-1.5 px-2 font-orbitron text-[9px] font-black uppercase tracking-wider text-center cursor-pointer relative transition-all duration-300 rounded ${
+                      isActive ? tab.color : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeRightTabBlock"
+                        className={`absolute inset-0 border rounded ${tab.activeBg} bg-purple-950/20`}
+                        transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                      />
+                    )}
+                    <span className="relative z-10">{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Tab content */}

@@ -16,7 +16,7 @@ def initialize_relationships(new_agent: Dict[str, Any], existing_agents: List[Di
         
         # Symmetrically add back-relationship to existing agent
         existing_rels = existing.setdefault("relationships", {})
-        existing_rels[new_agent["id"]] = random.randint(-20, 20)
+        existing_rels[new_agent["id"]] = weight
 
 def update_relationship_weight(agent_a_id: str, agent_b_id: str, delta: int):
     """Updates the relationship weight between two agents, clamping the value between -100 and 100.

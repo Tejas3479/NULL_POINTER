@@ -21,7 +21,7 @@ def get_event_faction(event: dict) -> str:
     from backend.services.world_store import world_store
     
     if kind == "agent_spawned":
-        agent_id = payload.get("agent_id")
+        agent_id = event.get("agent_id") or payload.get("agent_id")
         agent = next((a for a in world_store.state.get("agents", []) if a["id"] == agent_id), None)
         if agent:
             return agent.get("loyalty", "operators")

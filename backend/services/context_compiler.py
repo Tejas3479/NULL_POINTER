@@ -103,6 +103,11 @@ class ContextCompiler:
                     root = node.module.split(".")[0]
                     if root in banned_imports:
                         errors.append(f"Line {node.lineno}: Import from banned module '{node.module}' violates boundaries.md.")
+                for alias in node.names:
+                    if alias.name in banned_patterns:
+                        errors.append(f"Line {node.lineno}: Import of banned name '{alias.name}' violates boundaries.md.")
+                    if (alias.name.startswith("__") and alias.name.endswith("__")) or (alias.asname and alias.asname.startswith("__") and alias.asname.endswith("__")):
+                        errors.append(f"Line {node.lineno}: Import of double underscore name '{alias.name}' violates boundaries.md.")
                 self.generic_visit(node)
 
             def visit_Name(self, node: ast.Name):

@@ -7,6 +7,7 @@ from backend.narrative.event_narrator import generate_narrative_paragraph, get_e
 async def process_tick_events(world_id: str, tick: int, events: List[Dict[str, Any]]):
     """Processes tick events, compiles narrative paragraphs, updates Supabase & state lore, and broadcasts WS updates.
     """
+    entries = []
     for event in events:
         # Ignore lore events to avoid narrative loops (since narrative compiles lore)
         if event.get("kind") == "lore":
@@ -25,27 +26,33 @@ async def process_tick_events(world_id: str, tick: int, events: List[Dict[str, A
             "faction": faction_id,
             "created_at": utc_now()
         }
-        
-        # 1. Store in Supabase chronicle_entries
-        if world_store.supabase:
-            try:
-                world_store.supabase.table("chronicle_entries").insert(entry).execute()
-            except Exception as e:
-                print(f"!!! Error writing to chronicle_entries table: {e} !!!")
-                
-        # 2. Append to state lore
-        if world_store.state:
+        entries.append(entry)
+
+    if not entries:
+        return
+
+    # 1. Bulk store in Supabase chronicle_entries
+    if world_store.supabase:
+        try:
+            world_store.supabase.table("chronicle_entries").insert(entries).execute()
+        except Exception as e:
+            print(f"!!! Error writing to chronicle_entries table: {e} !!!")
+            
+    # 2. Append to state lore
+    if world_store.state:
+        for entry in entries:
             world_store.state.setdefault("lore", []).append({
                 "id": entry["id"],
                 "title": entry["title"],
                 "body": entry["body"],
                 "tick": tick
             })
-            # Limit lore state array size to keep state payload optimal
-            world_store.state["lore"] = world_store.state["lore"][-80:]
-            world_store.save()
-            
-        # 3. Broadcast WebSocket narrative update
+        # Limit lore state array size to keep state payload optimal
+        world_store.state["lore"] = world_store.state["lore"][-80:]
+        world_store.save()
+        
+    # 3. Broadcast WebSocket narrative update
+    for entry in entries:
         await manager.broadcast({
             "type": "narrative_update",
             "entry": entry

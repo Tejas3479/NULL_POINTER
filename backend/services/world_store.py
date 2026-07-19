@@ -159,7 +159,12 @@ class WorldStore:
 
     def create_or_load_world(self, world_id: str) -> Dict[str, Any]:
         if not self.supabase:
-            # Local fallback loading
+            # Local fallback loading - dynamically set path based on world_id
+            if world_id == "local-null-pointer":
+                self.path = self.path.parent / "world_state.json"
+            else:
+                self.path = self.path.parent / f"world_state_{world_id}.json"
+
             if self.state and self.state.get("world_id") == world_id:
                 return self.state
             

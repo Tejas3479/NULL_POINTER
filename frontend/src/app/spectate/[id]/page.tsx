@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { Shield, Flame, RadioTower, Lock, LogIn, AlertCircle, GitBranch } from 'lucide-react';
 import Link from 'next/link';
 import { useSimulationSocket } from '@/hooks/useSimulationSocket';
+import { getWsUrl } from '@/config';
 import { SimulationWorldMap } from '@/components/SimulationWorldMap';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ResizableLayout } from '@/components/ResizableLayout';
@@ -17,7 +18,7 @@ export default function SpectatorPage({ params }: { params: Promise<{ id: string
     stability,
     logs,
     world
-  } = useSimulationSocket(`ws://127.0.0.1:8000/ws/spectate/${worldId}`);
+  } = useSimulationSocket(getWsUrl(`/ws/spectate/${worldId}`));
 
   const [toast, setToast] = useState<string | null>(null);
 

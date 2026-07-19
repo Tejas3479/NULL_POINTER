@@ -2,12 +2,13 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { getBackendUrl } from '@/config';
 
 export default function RootPage() {
   const router = useRouter();
 
   useEffect(() => {
-    fetch('http://localhost:8000/auth/me', { 
+    fetch(`${getBackendUrl()}/auth/me`, { 
       credentials: 'include' 
     })
       .then((res) => {

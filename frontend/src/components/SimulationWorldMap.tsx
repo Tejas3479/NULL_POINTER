@@ -509,43 +509,44 @@ export function SimulationWorldMap({
       {/* 3D Map Visualizer */}
       <div className="border border-slate-900 bg-black overflow-hidden relative rounded-lg">
         {/* HUD control bar */}
-        <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-3 text-[9px] uppercase tracking-wider font-mono font-bold select-none">
-          <div className="flex items-center gap-2 text-slate-400 bg-slate-950/80 border border-slate-900 px-2.5 py-1 rounded">
-            <RadioTower size={12} className="text-cyan-400" />
+        <div className="absolute left-4 top-4 z-10 flex flex-wrap items-center gap-2.5 text-[9px] uppercase tracking-wider font-mono font-bold select-none">
+          <div className="flex items-center gap-2 text-slate-400 bg-black/60 backdrop-blur-md border border-slate-800/80 px-2.5 py-1.5 rounded shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+            <RadioTower size={12} className="text-cyan-400 animate-pulse" />
             <span>Tick {world.tick}</span>
           </div>
 
           <button 
             onClick={handleToggleAudio}
-            className={`px-2.5 py-1 rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-2.5 py-1.5 rounded border transition-all duration-300 cursor-pointer flex items-center gap-1.5 shadow-[0_4px_12px_rgba(0,0,0,0.5)] ${
               isAudioActive 
-                ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20' 
-                : 'border-slate-800 text-slate-500 bg-slate-950/80 hover:text-slate-300 hover:border-slate-700'
+                ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20' 
+                : 'border-slate-800 bg-black/60 hover:text-slate-300 hover:border-slate-700'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${isAudioActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-            <span>{isAudioActive ? 'Audio Active' : 'Enable 3D Sound'}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isAudioActive ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_#10b981]' : 'bg-slate-600'}`} />
+            <span>{isAudioActive ? '3D Sound Active' : 'Enable 3D Sound'}</span>
           </button>
 
           <button 
             onClick={() => setEcoMode(!ecoMode)}
-            className={`px-2.5 py-1 rounded border transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-2.5 py-1.5 rounded border transition-all duration-300 cursor-pointer flex items-center gap-1.5 shadow-[0_4px_12px_rgba(0,0,0,0.5)] ${
               ecoMode 
-                ? 'border-amber-500/30 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20' 
-                : 'border-slate-800 text-slate-500 bg-slate-950/80 hover:text-slate-300 hover:border-slate-700'
+                ? 'border-amber-500/40 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20' 
+                : 'border-slate-800 bg-black/60 hover:text-slate-300 hover:border-slate-700'
             }`}
           >
+            <span className={`w-1.5 h-1.5 rounded-full ${ecoMode ? 'bg-amber-400' : 'bg-slate-600'}`} />
             <span>GPU Eco Mode: {ecoMode ? 'ON' : 'OFF'}</span>
           </button>
         </div>
 
         {selectedAnomaly && (
-          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 bg-black/60 border border-slate-800 px-2 py-1 rounded text-[9px] uppercase tracking-wider text-slate-400 font-mono">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5 bg-black/60 backdrop-blur-md border border-slate-800/80 px-2.5 py-1.5 rounded text-[9px] uppercase tracking-wider text-slate-400 font-mono shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shadow-[0_0_6px_#ef4444]" />
             Active Target: {selectedAnomaly.name}
             <button 
               onClick={() => setSelectedAnomalyId(null)}
-              className="ml-2 hover:text-white cursor-pointer text-[10px]"
+              className="ml-2 hover:text-white cursor-pointer text-[10px] font-bold"
             >
               [X]
             </button>
@@ -601,72 +602,92 @@ export function SimulationWorldMap({
       {/* Grid Dashboard controls */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 min-h-[280px]">
         {/* Left Column: Factions & Lore */}
-        <div className="border border-slate-800 bg-slate-950/70 p-4 overflow-hidden rounded-lg flex flex-col justify-between">
+        <div className="border border-slate-900/60 bg-slate-950/20 backdrop-blur-sm p-4 overflow-hidden rounded-lg flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-4 text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
               <Activity size={14} className="text-emerald-400" />
               Factions
             </div>
             <div className="space-y-3">
-              {world.factions.map((faction) => (
-                <div key={faction.id}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-200">{faction.name}</span>
-                    <span className="text-slate-500">{faction.territory}%</span>
+              {world.factions.map((faction) => {
+                const gradMap: Record<string, string> = {
+                  kernel: 'from-sky-500 to-cyan-400 shadow-[0_0_8px_rgba(56,189,248,0.3)]',
+                  ghost: 'from-purple-500 to-fuchsia-400 shadow-[0_0_8px_rgba(192,132,252,0.3)]',
+                  operators: 'from-emerald-500 to-teal-400 shadow-[0_0_8px_rgba(34,197,110,0.3)]',
+                  parasite: 'from-rose-500 to-pink-400 shadow-[0_0_8px_rgba(244,63,94,0.3)]',
+                  awakening: 'from-amber-500 to-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.3)]'
+                };
+                return (
+                  <div key={faction.id}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-slate-200">{faction.name}</span>
+                      <span className="text-slate-500 font-bold font-mono">{faction.territory}%</span>
+                    </div>
+                    <div className="h-2 bg-slate-950 border border-slate-900/60 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full bg-gradient-to-r ${gradMap[faction.id] || 'from-slate-500 to-slate-400'} transition-all duration-500`}
+                        style={{ width: `${faction.territory}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-2 bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full transition-all duration-500"
-                      style={{ width: `${faction.territory}%`, backgroundColor: factionColors[faction.id] ?? '#facc15' }}
-                    />
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           {latestLore && (
-            <div className="border-t border-slate-800/60 pt-3 mt-3">
-              <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-1">Latest Lore Entry</div>
-              <p className="text-[11px] text-slate-400 leading-relaxed italic line-clamp-2">{latestLore.body}</p>
+            <div className="border-t border-slate-900/60 pt-3 mt-3">
+              <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-1 font-bold">Latest Lore Entry</div>
+              <p className="text-[11px] text-slate-400 leading-relaxed italic line-clamp-2 font-sans">{latestLore.body}</p>
             </div>
           )}
         </div>
 
         {/* Middle Column: Agent Deployer Swarm */}
-        <div className="border border-slate-800 bg-slate-950/70 p-4 overflow-hidden rounded-lg flex flex-col justify-between">
+        <div className="border border-slate-900/60 bg-slate-950/20 backdrop-blur-sm p-4 overflow-hidden rounded-lg flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-4 text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
               <GitBranch size={14} className="text-cyan-400" />
               Agent Swarm
             </div>
             <div className="space-y-2 max-h-36 overflow-y-auto custom-scrollbar pr-1">
-              {world.agents.map((agent) => (
-                <div key={agent.id} className="border border-slate-800 bg-black/40 p-2 rounded transition-all hover:border-slate-700">
-                  <div className="flex justify-between gap-2 text-xs">
-                    <span className="text-white font-bold truncate">{agent.name}</span>
-                    <span className="text-slate-500 uppercase text-[9px]">{agent.mood}</span>
-                  </div>
-                  <div className="text-[9px] text-slate-500 uppercase mt-0.5">{agent.loyalty}</div>
-                  {agent.biography && (
-                    <div className="text-[8px] text-slate-400 mt-1 italic border-t border-slate-900/50 pt-1 leading-normal">
-                      {agent.biography}
+              {world.agents.map((agent) => {
+                const facColor = factionColors[agent.loyalty] || '#94a3b8';
+                return (
+                  <div key={agent.id} className="border border-slate-900 bg-black/45 p-2 rounded transition-all hover:border-slate-700 flex flex-col gap-1">
+                    <div className="flex justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${agent.active ? 'bg-emerald-400 animate-pulse shadow-[0_0_6px_#10b981]' : 'bg-slate-700'}`} />
+                        <span className="text-white font-bold truncate">{agent.name}</span>
+                      </div>
+                      <span className="text-slate-500 uppercase text-[9px] shrink-0 font-bold">{agent.mood}</span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="flex justify-between items-center text-[9px] mt-0.5">
+                      <span className="uppercase font-black tracking-wider" style={{ color: facColor }}>
+                        {agent.loyalty}
+                      </span>
+                      <span className="text-slate-600 font-bold font-mono">ACTIVE</span>
+                    </div>
+                    {agent.biography && (
+                      <div className="text-[8px] text-slate-400 mt-1 italic border-t border-slate-900/50 pt-1 leading-normal font-sans">
+                        {agent.biography}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* Advanced Spawner Panel */}
-          <div className="border-t border-slate-800/60 pt-3">
+          <div className="border-t border-slate-900/60 pt-3">
             <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500 mb-2 font-bold font-orbitron">Deploy Agent Specialist</div>
             <div className="grid grid-cols-2 gap-2 max-h-28 overflow-y-auto custom-scrollbar pr-1">
               {world.agent_archetypes.map((archetype) => (
                 <button
                   key={archetype.id}
                   onClick={() => onSpawnAgent(archetype.id)}
-                  className={`py-1.5 px-1 text-[8px] uppercase tracking-wider font-bold rounded border flex flex-col items-center justify-center gap-0.5 transition-all cursor-pointer hover:scale-[1.03] active:scale-[0.98] ${
+                  className={`py-1.5 px-1.5 text-[8px] uppercase tracking-wider font-bold rounded border flex flex-col items-center justify-center gap-0.5 transition-all duration-200 cursor-pointer hover:scale-[1.03] active:scale-[0.98] ${
                     archetype.unlocked 
                       ? 'border-emerald-500/30 text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/60'
                       : 'border-amber-500/30 text-amber-400 bg-amber-500/5 hover:bg-amber-500/10 hover:border-amber-500/60'
@@ -683,7 +704,7 @@ export function SimulationWorldMap({
         </div>
 
         {/* Right Column: Telemetry & God Mode Sliders */}
-        <div className="border border-slate-800 bg-slate-950/70 p-4 overflow-hidden rounded-lg flex flex-col justify-between">
+        <div className="border border-slate-900/60 bg-slate-950/20 backdrop-blur-sm p-4 overflow-hidden rounded-lg flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-3 text-xs uppercase tracking-[0.2em] text-slate-400 font-bold">
               <Sparkles size={14} className="text-fuchsia-300" />
@@ -692,9 +713,9 @@ export function SimulationWorldMap({
 
             {selectedAnomaly ? (
               /* Selected Anomaly Details */
-              <div className="space-y-3 p-3 bg-black/40 border border-slate-800 rounded-lg transition-all duration-300">
+              <div className="space-y-3 p-3 bg-black/40 border border-slate-900 rounded-lg transition-all duration-300">
                 <div className="flex items-center gap-1.5 text-xs text-white font-bold">
-                  <Crosshair size={12} className="text-red-400" />
+                  <Crosshair size={12} className="text-red-400 animate-spin" />
                   <span>{selectedAnomaly.name}</span>
                 </div>
                 <div className="text-[10px] text-slate-400 space-y-1">
@@ -721,9 +742,9 @@ export function SimulationWorldMap({
                     <span>Grid Severity Level</span>
                     <span>{selectedAnomaly.severity}%</span>
                   </div>
-                  <div className="h-1.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden">
+                  <div className="h-1.5 bg-slate-950 border border-slate-900/60 rounded-full overflow-hidden">
                     <div 
-                      className="h-full bg-red-500 animate-pulse transition-all duration-300" 
+                      className="h-full bg-gradient-to-r from-red-600 to-red-400 animate-pulse transition-all duration-300" 
                       style={{ width: `${selectedAnomaly.severity}%` }}
                     />
                   </div>
@@ -731,7 +752,7 @@ export function SimulationWorldMap({
 
                 <button 
                   onClick={() => setSelectedAnomalyId(null)}
-                  className="w-full py-1 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900 text-[8px] uppercase font-mono tracking-widest rounded transition-all cursor-pointer"
+                  className="w-full py-1 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700 bg-slate-900/40 hover:bg-slate-900 text-[8px] uppercase font-mono tracking-widest rounded transition-all cursor-pointer font-bold"
                 >
                   Return to Parameters
                 </button>
@@ -743,14 +764,14 @@ export function SimulationWorldMap({
                   <div className="absolute inset-0 bg-slate-950/85 backdrop-blur-sm z-20 flex flex-col items-center justify-center border border-red-500/20 rounded p-4 text-center">
                     <Lock className="text-red-500 animate-pulse mb-1" size={18} />
                     <span className="text-[9px] uppercase font-orbitron font-black text-white tracking-widest">HOLOGRAPHIC LOCK ACTIVE</span>
-                    <span className="text-[7px] uppercase text-slate-500 mt-0.5 tracking-wider">ADMIN PRIVILEGES REQUIRED TO EDIT CORE REALITY</span>
+                    <span className="text-[7px] uppercase text-slate-500 mt-0.5 tracking-wider">ADMIN privileges required to edit core reality</span>
                   </div>
                 )}
                 {Object.entries(world.parameters).map(([key, value]) => (
                   <label key={key} className={`block ${userRole !== 'admin' ? 'opacity-30' : ''}`}>
                     <div className="flex justify-between text-[10px] uppercase text-slate-400 mb-1">
                       <span>{key.replaceAll('_', ' ')}</span>
-                      <span>{value.toFixed(2)}</span>
+                      <span className="font-bold text-slate-200 font-mono">{value.toFixed(2)}</span>
                     </div>
                     <input
                       type="range"
@@ -760,7 +781,7 @@ export function SimulationWorldMap({
                       value={value}
                       disabled={userRole !== 'admin'}
                       onChange={(event) => onParameterChange(key, Number(event.target.value))}
-                      className="w-full accent-cyan-400 cursor-ew-resize h-1.5 bg-slate-900 rounded-full appearance-none disabled:cursor-not-allowed"
+                      className="w-full accent-cyan-400 cursor-ew-resize h-1 bg-slate-900 rounded-full appearance-none disabled:cursor-not-allowed"
                     />
                   </label>
                 ))}

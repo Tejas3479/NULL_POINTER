@@ -107,10 +107,17 @@ def get_memory_graph() -> Dict[str, Any]:
             links.append({"source": agent_id, "target": arch_id, "label": "IMPLEMENTS"})
             
         # Link Agent -> Faction based on loyalty or dynamic metrics
-        # For simplicity, assign to a faction dynamically or use a random one from snapshot
         if factions:
-            fav_faction = factions[hash(agent_id) % len(factions)]
-            links.append({"source": agent_id, "target": fav_faction["id"], "label": f"STANCE: {agent.get('loyalty', 'neutral')}"})
+            agent_loyalty = agent.get("loyalty")
+            matching_faction = next((f for f in factions if f["id"] == agent_loyalty), None)
+            if matching_faction:
+                links.append({"source": agent_id, "target": matching_faction["id"], "label": f"LOYAL_TO"})
+            else:
+                # Deterministic fallback using MD5 hash instead of builtin hash()
+                import hashlib
+                hash_val = int(hashlib.md5(agent_id.encode("utf-8")).hexdigest(), 16)
+                fav_faction = factions[hash_val % len(factions)]
+                links.append({"source": agent_id, "target": fav_faction["id"], "label": f"STANCE: {agent.get('loyalty', 'neutral')}"})
 
         # Link Agent -> World
         links.append({"source": agent_id, "target": "world", "label": "INHABITS"})

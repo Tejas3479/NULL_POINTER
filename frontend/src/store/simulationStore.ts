@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getBackendUrl, getWsUrl } from '@/config';
 
 export interface ToastNotification {
   id: string;
@@ -135,7 +136,7 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
   presenceList: [],
   chronicleEntries: [],
   socket: null,
-  apiBase: 'http://localhost:8000',
+  apiBase: getBackendUrl(),
   userRole: null,
   username: null,
   toasts: [],
@@ -173,8 +174,8 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       existingSocket.close();
     }
 
-    const apiBase = 'http://localhost:8000';
-    const wsBaseUrl = 'ws://127.0.0.1:8000/ws/heat';
+    const apiBase = getBackendUrl();
+    const wsBaseUrl = getWsUrl('/ws/heat');
     
     // Fetch initial world snapshot
     fetch(`${apiBase}/v1/simulation/world`, { credentials: 'include' })
