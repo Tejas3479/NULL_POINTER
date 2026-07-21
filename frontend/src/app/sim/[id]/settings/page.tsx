@@ -13,8 +13,6 @@ import {
   Check, 
   GitBranch, 
   AlertTriangle,
-  RefreshCw,
-  Trash2,
   GitFork
 } from 'lucide-react';
 
@@ -44,7 +42,7 @@ export default function SettingsPage() {
   const [savingWebhook, setSavingWebhook] = useState(false);
 
   // Snapshots State
-  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshots, setSnapshots] = useState<{ id: string; tick: number; created_at: string }[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(false);
 
   const fetchSnapshots = async () => {
@@ -124,6 +122,7 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSnapshots();
   }, [world?.world_id]);
 
