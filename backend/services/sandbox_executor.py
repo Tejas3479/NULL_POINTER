@@ -11,6 +11,7 @@ import hashlib
 import sys
 import io
 import multiprocessing
+import subprocess
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional
 
@@ -253,25 +254,107 @@ def _execute_with_replit(code: str, language: str, timeout_seconds: int, bypass_
     # Audit log validation success
     write_audit_log(code, language, provider, success=True)
     
-    # 2. Multiprocessing isolation execution
-    parent_conn, child_conn = multiprocessing.Pipe()
-    p = multiprocessing.Process(target=_run_sandbox_worker, args=(code, child_conn), daemon=True)
-    p.start()
-    
-    p.join(timeout=timeout_seconds)
-    if p.is_alive():
-        p.terminate()
-        p.join()
-        return _result(
-            success=False,
-            error="Execution timed out.",
-            execution_time=time.perf_counter() - started,
-            provider=provider,
-            exit_code=124
+    # 2. Subprocess execution wrapper
+    worker_code = """
+import sys
+import io
+import json
+
+SAFE_BUILTINS_NAMES = [
+    "True", "False", "None", "int", "float", "str", "list", "dict", "tuple",
+    "range", "len", "print", "abs", "sum", "min", "max", "round",
+    "getattr", "hasattr", "vars", "type", "Exception", "ValueError",
+    "TypeError", "KeyError", "IndexError", "AttributeError", "StopIteration"
+]
+safe_builtins = {}
+for name in SAFE_BUILTINS_NAMES:
+    if hasattr(__builtins__, name):
+        safe_builtins[name] = getattr(__builtins__, name)
+    elif isinstance(__builtins__, dict) and name in __builtins__:
+        safe_builtins[name] = __builtins__[name]
+
+safe_builtins["True"] = True
+safe_builtins["False"] = False
+safe_builtins["None"] = None
+
+try:
+    code = sys.stdin.read()
+except Exception as e:
+    print(json.dumps({
+        "success": False,
+        "output": "",
+        "error": f"Failed to read input code: {e}",
+        "exit_code": 1
+    }))
+    sys.exit(1)
+
+old_stdout = sys.stdout
+old_stderr = sys.stderr
+sys.stdout = io.StringIO()
+sys.stderr = io.StringIO()
+
+success = True
+error_msg = ""
+exit_code = 0
+
+try:
+    globals_dict = {
+        "__builtins__": safe_builtins,
+    }
+    locals_dict = {}
+    compiled = compile(code, "<sandbox>", "exec")
+    exec(compiled, globals_dict, locals_dict)
+except Exception as e:
+    success = False
+    error_msg = f"{type(e).__name__}: {e}"
+    exit_code = 1
+
+stdout_val = sys.stdout.getvalue()
+stderr_val = sys.stderr.getvalue()
+
+sys.stdout = old_stdout
+sys.stderr = old_stderr
+
+print(json.dumps({
+    "success": success,
+    "output": stdout_val,
+    "error": error_msg or stderr_val,
+    "exit_code": exit_code
+}))
+"""
+
+    try:
+        p = subprocess.Popen(
+            [sys.executable, "-I", "-c", worker_code],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
         )
-    else:
-        if parent_conn.poll():
-            res = parent_conn.recv()
+        try:
+            stdout_bytes, stderr_bytes = p.communicate(input=code.encode('utf-8'), timeout=timeout_seconds)
+            exit_code = p.returncode
+        except subprocess.TimeoutExpired:
+            p.kill()
+            stdout_bytes, stderr_bytes = p.communicate()
+            return _result(
+                success=False,
+                error="Execution timed out.",
+                execution_time=time.perf_counter() - started,
+                provider=provider,
+                exit_code=124
+            )
+            
+        if exit_code != 0 and not stdout_bytes:
+            return _result(
+                success=False,
+                error=stderr_bytes.decode('utf-8', errors='replace') or "Process exited with non-zero code.",
+                execution_time=time.perf_counter() - started,
+                provider=provider,
+                exit_code=exit_code
+            )
+            
+        try:
+            res = json.loads(stdout_bytes.decode('utf-8', errors='replace'))
             return _result(
                 success=res["success"],
                 output=res["output"],
@@ -280,14 +363,22 @@ def _execute_with_replit(code: str, language: str, timeout_seconds: int, bypass_
                 exit_code=res["exit_code"],
                 provider=provider
             )
-        else:
+        except Exception as e:
             return _result(
                 success=False,
-                error="Unknown runner execution failure.",
+                error=f"Parser error: {e}. Output: {stdout_bytes.decode('utf-8', errors='replace')}",
                 execution_time=time.perf_counter() - started,
                 provider=provider,
-                exit_code=1
+                exit_code=exit_code
             )
+    except Exception as e:
+        return _result(
+            success=False,
+            error=f"Process execution failed: {e}",
+            execution_time=time.perf_counter() - started,
+            provider=provider,
+            exit_code=1
+        )
 
 
 def _docker_client():

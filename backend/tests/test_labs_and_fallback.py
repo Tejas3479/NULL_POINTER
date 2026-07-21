@@ -94,5 +94,20 @@ print(target_secret)
         self.assertIn("Privilege Escalation Complete", res["message"])
         self.assertTrue(labs_store.labs[2]["solved"])
 
+    async def test_lab_4_verification(self):
+        labs_store.reset_labs()
+
+        # 1. Non-loop code should fail
+        res_non_loop = await labs_store.verify_attempt("lab-4", {"code": "print('hello')"})
+        self.assertFalse(res_non_loop["success"])
+        self.assertIn("does not appear to contain loop structures", res_non_loop["message"])
+
+        # 2. Infinite loop code should pass by triggering timeout
+        infinite_loop_code = "while True:\n    pass"
+        res_timeout = await labs_store.verify_attempt("lab-4", {"code": infinite_loop_code})
+        self.assertTrue(res_timeout["success"], f"Lab 4 verification failed: {res_timeout}")
+        self.assertIn("successfully captured and terminated", res_timeout["message"])
+        self.assertTrue(labs_store.labs[3]["solved"])
+
 if __name__ == "__main__":
     unittest.main()

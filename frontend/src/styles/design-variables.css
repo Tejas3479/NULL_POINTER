@@ -1,0 +1,71 @@
+/* NULL_POINTER Design Token Variables */
+:root {
+  /* Colors - Light Theme Default */
+  --color-bg-primary: #FAFAFA;
+  --color-bg-secondary: #F1F1F4;
+  --color-bg-elevated: #EBEBEF;
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-muted: #94A3B8;
+  --color-accent-primary: #2563EB;
+  --color-accent-secondary: #7C3AED;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-error: #DC2626;
+  --color-info: #0284C7;
+
+  /* Typography */
+  --font-family-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-family-display: 'Orbitron', sans-serif;
+  --font-family-mono: 'Fira Code', 'JetBrains Mono', monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 48px;
+  --space-4xl: 64px;
+  --space-5xl: 96px;
+
+  /* Borders & Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+/* Dark Mode Overrides */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg-primary: #08080C;
+    --color-bg-secondary: #12121A;
+    --color-bg-elevated: #181826;
+    --color-text-primary: #F8FAFC;
+    --color-text-secondary: #94A3B8;
+    --color-text-muted: #475569;
+    --color-accent-primary: #00F0FF;
+    --color-accent-secondary: #BD00FF;
+    --color-success: #00FF94;
+    --color-warning: #FFBD00;
+    --color-error: #FF3366;
+    --color-info: #0EA5E9;
+  }
+}
+
+/* Manual Theme Override */
+[data-theme="dark"] {
+  --color-bg-primary: #08080C;
+  --color-bg-secondary: #12121A;
+  --color-bg-elevated: #181826;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #475569;
+  --color-accent-primary: #00F0FF;
+  --color-accent-secondary: #BD00FF;
+  --color-success: #00FF94;
+  --color-warning: #FFBD00;
+  --color-error: #FF3366;
+  --color-info: #0EA5E9;
+}

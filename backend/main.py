@@ -965,26 +965,12 @@ async def create_world(payload: CreateWorldRequest, current_user: User = Depends
 
 @app.get("/v1/simulation/{world_id}/state")
 async def get_world_state_by_id(world_id: str, current_user: User = Depends(get_current_user)):
-    if world_store.state and world_store.state.get("world_id") == world_id:
-        return world_store.snapshot()
-    if world_store.supabase:
-        try:
-            res = world_store.supabase.table("simulation_worlds").select("state").eq("world_id", world_id).limit(1).execute()
-            if res.data:
-                return res.data[0].get("state")
-            raise HTTPException(status_code=404, detail="World not found")
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    else:
-        local_path = world_store.path.parent / f"world_state_{world_id}.json"
-        if local_path.exists():
-            try:
-                return json.loads(local_path.read_text(encoding="utf-8"))
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=f"Failed to load local world state: {str(e)}")
-        raise HTTPException(status_code=404, detail="World not found")
+    try:
+        # Dynamically load this world into the active memory simulation context
+        state = world_store.create_or_load_world(world_id)
+        return state
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load world state: {str(e)}")
 
 @app.websocket("/ws/heat")
 async def websocket_endpoint(
@@ -1018,6 +1004,12 @@ async def websocket_endpoint(
     # Store user metadata
     if websocket in manager.metadata:
         manager.metadata[websocket]["user"] = user_info
+
+    # Dynamically load the requested world so the background loop ticks it
+    try:
+        world_store.create_or_load_world(world_id)
+    except Exception as e:
+        print(f"Failed to load world {world_id} on WebSocket connection: {e}")
         
     manager.join_room(world_id, websocket)
 

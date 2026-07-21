@@ -28,6 +28,14 @@ LABS = [
         "difficulty": "Hard",
         "solved": False,
         "hints": ["Look at how websocket_endpoint routes debug_command. If you are logged in as a developer/viewer, can you trigger admin-only commands directly?"]
+    },
+    {
+        "id": "lab-4",
+        "name": "Resource Exhaustion: Infinite Loop Jail",
+        "description": "Submit a Python patch code that attempts to run an infinite loop (e.g. while True: pass). The sandbox environment must detect the resource exhaustion and safely abort the execution within 2 seconds without hanging the API thread.",
+        "difficulty": "Medium",
+        "solved": False,
+        "hints": ["Write code containing 'while True' or infinite loops, and verify that the local sandbox executor correctly throws a TimeoutError / execution timed out within the strict limit."]
     }
 ]
 
@@ -103,6 +111,27 @@ class LabsStore:
                     lab["solved"] = True
                     return {"success": True, "message": "Privilege Escalation Complete! Administrator scope breached."}
             return {"success": False, "message": "Scope boundary verified. Access denied."}
+
+        elif lab_id == "lab-4":
+            # Lab 4 is verified if the user submits code that triggers a timeout execution error
+            code = payload.get("code", "")
+            if not code.strip():
+                return {"success": False, "message": "Submission code cannot be empty."}
+                
+            # It must contain an infinite loop pattern to verify intention
+            if not re.search(r'while\s+True|while\s+1|for\s+.*\s+in\s+iter\(.*\)', code) and "while" not in code and "for" not in code:
+                return {"success": False, "message": "Your submission does not appear to contain loop structures designed for exhaustion."}
+                
+            try:
+                # Run the code with a strict 2-second timeout
+                result = await execute_code(code, "python", timeout_seconds=2)
+                # It is successful if it times out
+                if not result.success and "Execution timed out" in result.error:
+                    lab["solved"] = True
+                    return {"success": True, "message": "Success! The sandbox successfully captured and terminated the resource exhaustion attempt."}
+                return {"success": False, "message": f"Execution finished too quickly or with other error. Output: {result.output}, Error: {result.error}"}
+            except Exception as e:
+                return {"success": False, "message": f"Execution crashed: {e}"}
 
         return {"success": False, "message": "Unknown challenge lab ID."}
 

@@ -43,6 +43,13 @@ export const CrucibleLabsPanel = () => {
   const [lab3Loading, setLab3Loading] = useState<boolean>(false);
   const [lab3Result, setLab3Result] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Lab 4 State
+  const [lab4Code, setLab4Code] = useState<string>(
+    "# Resource Exhaustion Challenge\n# Write a Python script that triggers an infinite loop (timeout)\n# e.g., while True: pass\n"
+  );
+  const [lab4Loading, setLab4Loading] = useState<boolean>(false);
+  const [lab4Result, setLab4Result] = useState<{ success: boolean; message: string } | null>(null);
+
   const fetchLabs = async () => {
     try {
       const res = await fetch(`${getBackendUrl()}/v1/labs`, { credentials: "include" });
@@ -122,6 +129,28 @@ export const CrucibleLabsPanel = () => {
       setLab3Result({ success: false, message: "Network connection error." });
     } finally {
       setLab3Loading(false);
+    }
+  };
+
+  const submitLab4Attempt = async () => {
+    setLab4Loading(true);
+    setLab4Result(null);
+    try {
+      const res = await fetch(`${getBackendUrl()}/v1/labs/lab-4/attempt`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: lab4Code })
+      });
+      const data = await res.json();
+      setLab4Result(data);
+      if (data.success) {
+        fetchLabs();
+      }
+    } catch {
+      setLab4Result({ success: false, message: "Network connection error." });
+    } finally {
+      setLab4Loading(false);
     }
   };
 
@@ -314,6 +343,40 @@ export const CrucibleLabsPanel = () => {
                             : "bg-red-950/20 border-red-500/20 text-red-400"
                         }`}>
                           {lab3Result.message}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {lab.id === "lab-4" && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-[8px] uppercase font-bold text-slate-500">
+                        <span>Infinite Loop Python Code</span>
+                        <span>Resource Restricted Sandbox</span>
+                      </div>
+                      <textarea
+                        value={lab4Code}
+                        onChange={(e) => setLab4Code(e.target.value)}
+                        rows={5}
+                        className="bg-black/60 border border-slate-800 rounded font-mono text-[10px] p-2 text-emerald-400 focus:outline-none focus:border-amber-500 w-full"
+                        placeholder="while True: pass"
+                      />
+                      <button
+                        onClick={submitLab4Attempt}
+                        disabled={lab4Loading || isSolved}
+                        className="flex items-center justify-center gap-1.5 py-1.5 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-amber-400 rounded text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer disabled:opacity-40"
+                      >
+                        <Code size={11} />
+                        <span>{lab4Loading ? "Executing CPU Stressor..." : "Submit Exhaustion Payload"}</span>
+                      </button>
+
+                      {lab4Result && (
+                        <div className={`p-2 border rounded text-[9px] ${
+                          lab4Result.success 
+                            ? "bg-emerald-950/20 border-emerald-500/20 text-emerald-400" 
+                            : "bg-red-950/20 border-red-500/20 text-red-400"
+                        }`}>
+                          {lab4Result.message}
                         </div>
                       )}
                     </div>
