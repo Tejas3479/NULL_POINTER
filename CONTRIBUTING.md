@@ -31,9 +31,18 @@ The codebase consists of a **FastAPI backend** and a **Next.js/TypeScript fronte
    ```bash
    cp env.placeholder .env
    ```
-5. Spin up the FastAPI server:
+5. Spin up the FastAPI server from the repository root:
    ```bash
+   python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+   ```
+   Or, if running from within the `backend` directory, define the `PYTHONPATH` path variable before launching:
+   ```bash
+   # On Windows (PowerShell):
+   $env:PYTHONPATH=".."
    python main.py
+
+   # On Linux/macOS:
+   PYTHONPATH=.. python main.py
    ```
    The API will be available at `http://localhost:8000`.
 

@@ -67,9 +67,10 @@ Before execution, every script is parsed into a Python AST. The `SecurityVisitor
 * Double-underscore names and private attributes.
 
 ### 2. Process Isolation (Local Sandbox)
-For local sandboxing, the execution is spawned in an isolated daemon process using `multiprocessing`. System capability attributes and builtins are overridden:
-* Stdout/Stderr streams are redirected to in-memory buffers.
-* Strict execution time limits are enforced via process timeouts to prevent infinite loops.
+For local sandboxing, execution is spawned in a separate, isolated Python subprocess (`subprocess.Popen` running `sys.executable -I`) to prevent import-time recursion issues (especially on Windows) and ensure clean namespace isolation:
+* Custom worker wrapper overrides standard builtins with a strict `SAFE_BUILTINS` map.
+* Input code is securely piped over `stdin`, and execution outputs/errors are serialized to JSON over `stdout`/`stderr`.
+* Strict execution time limits (e.g., 2 seconds for resource exhaustion labs) are enforced using subprocess communication timeouts, terminating process trees immediately on timeout.
 
 ### 3. Container & Cloud Sandboxing (Docker & E2B)
 In production settings, execution automatically shifts to Docker containers or E2B sandbox microVMs, dropping all linux capabilities (`CAP_DROP`), blocking network access, and clamping memory limits to 128MB.
@@ -102,8 +103,18 @@ In production settings, execution automatically shifts to Docker containers or E
    ```
 
 3. **Start the FastAPI Server**:
+   From the repository root (parent of the `backend` directory):
    ```bash
    python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+   ```
+   Or, from within the `backend` directory (setting `PYTHONPATH` first):
+   ```bash
+   # On Windows (PowerShell)
+   $env:PYTHONPATH=".."
+   python main.py
+
+   # On Linux/macOS
+   PYTHONPATH=.. python main.py
    ```
 
 ---

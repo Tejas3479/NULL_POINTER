@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [1.2.0] - 2026-07-21
+
+### Added
+* **Lab 4 Challenge (Resource Exhaustion)**: Registered and integrated "Resource Exhaustion: Infinite Loop Jail" challenge verifying loop-detection timeouts.
+* **Crucible Labs Frontend UI Panel**: Added the interactive code editor, submission actions, and status updates for Lab 4 inside `CrucibleLabsPanel`.
+
+### Changed
+* **Windows-Safe Subprocess Sandbox**: Refactored the local sandbox execution fallback in `sandbox_executor.py` from `multiprocessing.Process` to a clean `subprocess.Popen` running `sys.executable -I` (Python isolation flags enabled) to resolve Windows spawn re-import loop recursion bugs.
+* **Double-Stream JSON Transport**: Replaced direct memory-sharing pipe connections with serialized JSON communication over standard inputs and outputs.
+* **Timeout Boundary Control**: Enforced strict timeout policies on subprocess communications to ensure infinite loop codes are aborted within 2 seconds.
+
+---
+
 ## [1.1.0] - 2026-06-05
 
 ### Added

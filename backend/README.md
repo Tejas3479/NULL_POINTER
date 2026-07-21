@@ -60,4 +60,4 @@ All endpoints require JWT authorization credentials passed via headers or cookie
 The [sandbox_executor.py](file:///c:/Users/tejas/Downloads/NULL_POINTER/backend/services/sandbox_executor.py) selects execution providers dynamically:
 1. **E2B Sandboxing**: Spawns isolated microVMs via the E2B SDK if API keys are set.
 2. **Docker Sandboxing**: Invokes local container instances with capabilities dropped, memory bounded, and network connectivity blocked.
-3. **Hardened Subprocess Sandbox (Local fallback)**: Spawns a dedicated child worker using `multiprocessing.Process`. It validates the code via `secure_ast_filter` and compiles the script using a sandboxed `__builtins__` map (`SAFE_BUILTINS`) to capture stdout/stderr over pipes.
+3. **Hardened Subprocess Sandbox (Local fallback)**: Spawns an isolated Python child process using `subprocess.Popen` running `sys.executable -I` (avoiding multiprocessing fork/spawn recursion issues on Windows). It validates code static safety via `secure_ast_filter`, pipes code over `stdin`, executes it with a restricted builtins map (`SAFE_BUILTINS`), and returns serialized JSON results over standard streams.

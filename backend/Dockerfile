@@ -23,10 +23,11 @@ ENV PATH=/root/.local/bin:$PATH
 ENV PYTHONUNBUFFERED=1
 
 # Copy backend source files
-COPY . .
+COPY . /app/backend
+ENV PYTHONPATH=/app
 
 # Expose API port
 EXPOSE 8000
 
-# Execute server boot command
-CMD ["python", "main.py"]
+# Execute server boot command running backend as a module
+CMD ["python", "-m", "backend.main"]
