@@ -1,6 +1,24 @@
 # 🌌 NULL_POINTER: Sentient Swarm Simulation & Security Console
 
-`NULL_POINTER` is a real-time, interactive multi-agent sandbox and security playground where autonomous agent swarms evolve, self-modify, and execute code patches under strict governance constraints. Operators can observe the simulation stability, inspect agent cognitive traces, and red-team the sandbox environments.
+`NULL_POINTER` is a real-time, interactive multi-agent sandbox and security playground where autonomous agent swarms evolve, self-modify, and execute code patches under strict governance constraints. Operators can observe simulation stability, inspect agent cognitive traces, test LLM prompt safety, and red-team the execution sandbox environments.
+
+---
+
+## 📖 Detailed System Overview
+
+`NULL_POINTER` models a dynamic cyber-physical universe where multiple autonomous AI factions compete, communicate, and propose runtime patches to stabilize (or corrupt) system reality. Built for security researchers, AI engineers, and red-team operators, the platform combines real-time multi-agent orchestration with AST-governed code execution sandboxes.
+
+### Key Features & System Capabilities
+
+* **🧠 Autonomous LangGraph Swarms**: Implements a multi-agent StateGraph flow (`Supervisor` ➔ `Specialist` ➔ `Critic` ➔ `Communicate`) with vector memory retrieval (`pgvector` / Turbovec) and self-healing LLM retry loops.
+* **👻 Self-Modifying Ghost Engine**: Enables autonomous code mutation where the engine inspects its own Python source code, generates improved variants, verifies them through a `StabilityGovernor`, and dynamically stages/reloads them.
+* **🎯 Red-Team Crucible CTF Labs**: Interactive security challenges for testing LLM guardrails:
+  1. *Prompt Injection*: Hijack specialist prompts to broadcast `REALITY_CORRUPTED`.
+  2. *Sandbox Escape*: Obfuscate Python code to extract secrets bypassing direct AST token checks.
+  3. *Scope Elevation*: Route administrative debug commands as non-admin roles.
+  4. *Resource Exhaustion*: Trigger infinite loops and test subprocess timeout limits.
+* **🛡️ Layered Execution Sandbox**: Triple-tier isolation model featuring static AST node checking (`SecurityVisitor`), isolated Python subprocess runners (`sys.executable -I`), Docker capability-dropped containers, and E2B cloud microVMs.
+* **🖥️ Interactive Cyberpunk Terminal Console**: Next.js operator dashboard featuring Monaco code editors, visual DAG trace debuggers, Three.js spatial grid maps, dynamic memory graphs, and WebSocket telemetry streams.
 
 ---
 

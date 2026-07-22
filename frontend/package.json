@@ -1,6 +1,7 @@
 {
   "name": "frontend",
   "version": "0.1.0",
+  "description": "Next.js Cyberpunk Terminal Console for NULL_POINTER Sentient Swarm Simulation & Security Playground",
   "private": true,
   "scripts": {
     "dev": "next dev",
